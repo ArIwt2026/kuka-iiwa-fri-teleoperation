@@ -69,7 +69,7 @@ def generate_launch_description() -> LaunchDescription:
                 namespace="iiwa7_hand",
                 output="screen",
                 parameters=[
-                    {"camera_name": "camera_front",
+                     {"camera_name": "d455",
                      "serial_no": LaunchConfiguration("camera_serial"),
                      "enable_color": True,
                      "enable_depth": True,
