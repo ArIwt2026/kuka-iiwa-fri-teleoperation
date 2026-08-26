@@ -82,11 +82,26 @@ target_link_libraries(wrench_sine_overlay
   FRIClient::FRIClient
 )
 
+# FRI monitor-only joint-state publisher
+add_executable(fri_monitor
+  src/fri_monitor.cpp
+)
+
+ament_target_dependencies(fri_monitor
+  rclcpp
+  sensor_msgs
+)
+
+target_link_libraries(fri_monitor
+  FRIClient::FRIClient
+)
+
 install(TARGETS
   joint_sine_overlay
   joint_trajectory_client
   torque_sine_overlay
   wrench_sine_overlay
+  fri_monitor
   DESTINATION lib/${PROJECT_NAME}
 )
 

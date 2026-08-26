@@ -6,6 +6,12 @@
 
 ROS 2 packages for the KUKA LBR, including communication to the real robot via the Fast Robot Interface ([FRI](https://github.com/lbr-stack/fri)) and [Gazebo](http://gazebosim.org/) simulation support. Included are the `iiwa7`, `iiwa14`, `med7`, and `med14`.
 
+## This Fork
+
+This repository is a fork of the original [LBR FRI ROS 2 Stack](https://github.com/lbr-stack/lbr_fri_ros2_stack). It extends the upstream stack for KUKA iiwa teleoperation with native KUKA hand-guiding motion support, a read-only FRI joint-state monitor, background LBR state broadcasting, combined robot/gripper visualization, SCHUNK WSG50 gripper integration, and camera integration support.
+
+The WSG50 driver and interfaces are maintained separately in the [WSG50 ROS 2 repository](https://github.com/LernFabrik/WSG50_ros2_humble).
+
 <body>
     <table>
         <tr>
