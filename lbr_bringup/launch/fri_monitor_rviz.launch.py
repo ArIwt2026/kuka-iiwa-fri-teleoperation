@@ -31,7 +31,7 @@ def generate_launch_description() -> LaunchDescription:
         "gripper_port", default_value="1501",
         description="WSG50 TCP port.")
     camera_serial = DeclareLaunchArgument(
-        "camera_serial", default_value="035322250957",
+        "camera_serial", default_value="_035322250957",
         description="Optional RealSense D455 serial number.")
 
     return LaunchDescription(
