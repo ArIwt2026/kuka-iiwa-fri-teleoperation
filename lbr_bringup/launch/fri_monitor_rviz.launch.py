@@ -30,6 +30,9 @@ def generate_launch_description() -> LaunchDescription:
     gripper_port = DeclareLaunchArgument(
         "gripper_port", default_value="1501",
         description="WSG50 TCP port.")
+    camera_serial = DeclareLaunchArgument(
+        "camera_serial", default_value="",
+        description="Optional RealSense D455 serial number.")
 
     return LaunchDescription(
         [
@@ -37,6 +40,7 @@ def generate_launch_description() -> LaunchDescription:
             robot_name,
             gripper_ip,
             gripper_port,
+            camera_serial,
             Node(
                 package="lbr_demos_cpp",
                 executable="fri_monitor",
@@ -56,6 +60,23 @@ def generate_launch_description() -> LaunchDescription:
                 parameters=[
                     {"gripper_ip": LaunchConfiguration("gripper_ip"),
                      "port": LaunchConfiguration("gripper_port")}
+                ],
+            ),
+            Node(
+                package="realsense2_camera",
+                executable="realsense2_camera_node",
+                name="d455",
+                namespace="camera_front",
+                output="screen",
+                parameters=[
+                    {"camera_name": "camera_front",
+                     "serial_no": LaunchConfiguration("camera_serial"),
+                     "enable_color": True,
+                     "enable_depth": True,
+                     "enable_infra1": False,
+                     "enable_infra2": False,
+                     "enable_sync": True,
+                     "align_depth.enable": True}
                 ],
             ),
             Node(
