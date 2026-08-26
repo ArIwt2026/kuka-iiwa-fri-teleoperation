@@ -56,6 +56,7 @@ def generate_launch_description() -> LaunchDescription:
                 package="wsg50_driver",
                 executable="wsg50_gripper_driver_node",
                 name="wsg50",
+                namespace="wsg50",
                 output="screen",
                 parameters=[
                     {"gripper_ip": LaunchConfiguration("gripper_ip"),
@@ -66,7 +67,7 @@ def generate_launch_description() -> LaunchDescription:
                 package="realsense2_camera",
                 executable="realsense2_camera_node",
                 name="d455",
-                namespace="iiwa7_hand",
+                namespace="iiwa7",
                 output="screen",
                 parameters=[
                      {"camera_name": "d455",
