@@ -55,7 +55,7 @@ def generate_launch_description() -> LaunchDescription:
             Node(
                 package="wsg50_driver",
                 executable="wsg50_gripper_driver_node",
-                name="wsg50",
+                name="driver",
                 namespace="wsg50",
                 output="screen",
                 parameters=[
