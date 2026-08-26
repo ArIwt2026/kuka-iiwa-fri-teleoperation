@@ -45,7 +45,7 @@ int main(int argc, char **argv) {
   auto node = std::make_shared<rclcpp::Node>("fri_monitor");
   const auto publisher = node->create_publisher<sensor_msgs::msg::JointState>("joint_states", 10);
 
-  const auto controller_ip = node->declare_parameter<std::string>("controller_ip", "172.31.1.147");
+  const auto controller_ip = node->declare_parameter<std::string>("controller_ip", "192.170.10.2");
   const auto port = node->declare_parameter<int>("port", 30200);
   const auto robot_name = node->declare_parameter<std::string>("robot_name", "iiwa7");
 

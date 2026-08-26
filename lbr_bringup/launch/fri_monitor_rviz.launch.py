@@ -44,7 +44,7 @@ def generate_launch_description() -> LaunchDescription:
                 namespace="iiwa7",
                 output="screen",
                 parameters=[
-                    {"controller_ip": "172.31.1.147", "port": 30200,
+                    {"controller_ip": "192.170.10.2", "port": 30200,
                      "robot_name": "iiwa7"}
                 ],
             ),
