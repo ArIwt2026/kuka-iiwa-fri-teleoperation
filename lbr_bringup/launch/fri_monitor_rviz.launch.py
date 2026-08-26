@@ -66,7 +66,7 @@ def generate_launch_description() -> LaunchDescription:
                 package="realsense2_camera",
                 executable="realsense2_camera_node",
                 name="d455",
-                namespace="camera_front",
+                namespace="iiwa7_hand",
                 output="screen",
                 parameters=[
                     {"camera_name": "camera_front",
