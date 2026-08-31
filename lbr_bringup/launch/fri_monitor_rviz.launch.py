@@ -2,10 +2,10 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import Command, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 
 from lbr_bringup.description import LBRDescriptionMixin
-from lbr_bringup.rviz import RVizMixin
 
 
 def generate_launch_description() -> LaunchDescription:
@@ -31,7 +31,7 @@ def generate_launch_description() -> LaunchDescription:
         "gripper_port", default_value="1501",
         description="WSG50 TCP port.")
     camera_serial = DeclareLaunchArgument(
-        "camera_serial", default_value="_035322250957",
+        "camera_serial", default_value="035322250957",
         description="Optional RealSense D455 serial number.")
 
     return LaunchDescription(
@@ -70,12 +70,15 @@ def generate_launch_description() -> LaunchDescription:
                 namespace="iiwa7",
                 output="screen",
                 parameters=[
-                     {"camera_name": "d455",
-                     "serial_no": LaunchConfiguration("camera_serial"),
+                     {"camera_name": "d455", "tf_prefix": "kuka_",
+                     "usb_port_id": "2-5.1.1",
                      "enable_color": True,
                      "enable_depth": True,
                      "enable_infra1": False,
                      "enable_infra2": False,
+                     "enable_gyro": False,
+                     "enable_accel": False,
+                     "enable_motion": False,
                      "enable_sync": True,
                      "align_depth.enable": True}
                 ],
@@ -88,9 +91,6 @@ def generate_launch_description() -> LaunchDescription:
                 output="screen",
                 parameters=[robot_description],
                 remappings=[("robot_description", "robot_description")],
-            ),
-            RVizMixin.node_rviz(
-                remappings=[("/lbr/robot_description", "/iiwa7/robot_description")]
             ),
         ]
     )
