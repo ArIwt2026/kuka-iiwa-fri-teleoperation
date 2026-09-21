@@ -19,9 +19,9 @@ import com.kuka.connectivity.fastRobotInterface.FRISession;
 import com.kuka.generated.ioAccess.MediaFlangeIOGroup;
 import com.kuka.roboticsAPI.applicationModel.RoboticsAPIApplication;
 import com.kuka.roboticsAPI.deviceModel.LBR;
+import com.kuka.roboticsAPI.geometricModel.CartDOF;
 import com.kuka.roboticsAPI.motionModel.IMotionContainer;
-import com.kuka.roboticsAPI.motionModel.controlModeModel.JointImpedanceControlMode;
-import com.kuka.roboticsAPI.motionModel.controlModeModel.PositionControlMode;
+import com.kuka.roboticsAPI.motionModel.controlModeModel.CartesianImpedanceControlMode;
 import com.kuka.roboticsAPI.uiModel.userKeys.IUserKey;
 import com.kuka.roboticsAPI.uiModel.userKeys.IUserKeyBar;
 import com.kuka.roboticsAPI.uiModel.userKeys.IUserKeyListener;
@@ -116,11 +116,28 @@ public class FRICartesianWall extends RoboticsAPIApplication {
         }
     }
 
+    /*
+     * High stiffness mode (stiff hold)
+     */
+    private static final double HIGH_TRANSLATION = 2500;
+    private static final double HIGH_ROTATION = 300;
+    private static final double HIGH_DAMPING = 0.7;
+
+    /*
+     * Low / free mode (teleop hand guiding)
+     */
+    private static final double LOW_STIFFNESS = 0;
+    private static final double LOW_DAMPING = 0.2;
+
     private void holdStiffPosition() {
         IMotionContainer current = holdMotion;
         if (current == null || current.isFinished()) {
-            holdMotion = lbr.moveAsync(positionHold(new PositionControlMode(), -1, null));
-            getLogger().info("Stiff PositionHold active; robot locked in position.");
+            CartesianImpedanceControlMode highMode = new CartesianImpedanceControlMode();
+            highMode.parametrize(CartDOF.TRANSL).setStiffness(HIGH_TRANSLATION);
+            highMode.parametrize(CartDOF.ROT).setStiffness(HIGH_ROTATION);
+            highMode.parametrize(CartDOF.ALL).setDamping(HIGH_DAMPING);
+            holdMotion = lbr.moveAsync(positionHold(highMode, -1, null));
+            getLogger().info("Stiff Cartesian PositionHold active; robot locked in position.");
         }
     }
 
@@ -196,14 +213,14 @@ public class FRICartesianWall extends RoboticsAPIApplication {
         // Stability confirmed while held; now transition seamlessly to compliant overlay motion
         cancelHoldMotion();
 
-        JointImpedanceControlMode mode =
-            new JointImpedanceControlMode(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
-        mode.setDampingForAllJoints(0.0);
+        CartesianImpedanceControlMode freeMode = new CartesianImpedanceControlMode();
+        freeMode.parametrize(CartDOF.ALL).setStiffness(LOW_STIFFNESS);
+        freeMode.parametrize(CartDOF.ALL).setDamping(LOW_DAMPING);
         synchronized (this) {
             if (stopping || motion != null) return;
-            motion = lbr.moveAsync(positionHold(mode, -1, null).addMotionOverlay(overlay));
+            motion = lbr.moveAsync(positionHold(freeMode, -1, null).addMotionOverlay(overlay));
         }
-        getLogger().info("FRI torque overlay STARTED; PC controller owns overlay torque.");
+        getLogger().info("FRI torque overlay STARTED (Cartesian free mode with A4 limit); PC controller owns overlay torque.");
     }
 
     private void checkStartupInsideFreeRegion(double[] q, double[] lower, double[] upper) {

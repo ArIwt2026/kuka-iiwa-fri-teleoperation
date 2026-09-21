@@ -176,8 +176,8 @@ class FriCartesianWallClient final : public KUKA::FRI::LBRClient {
 
   void command() override {
     if (robotState().getClientCommandMode() != KUKA::FRI::EClientCommandMode::TORQUE ||
-        robotState().getControlMode() != KUKA::FRI::EControlMode::JOINT_IMP_CONTROL_MODE) {
-      throw std::runtime_error("Expected FRI TORQUE with JOINT_IMP_CONTROL_MODE");
+        robotState().getControlMode() != KUKA::FRI::EControlMode::CART_IMP_CONTROL_MODE) {
+      throw std::runtime_error("Expected FRI TORQUE with CART_IMP_CONTROL_MODE");
     }
     const auto state = sample_state();
     robotCommand().setJointPosition(state.q.data());
