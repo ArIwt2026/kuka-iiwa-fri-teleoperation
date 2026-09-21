@@ -204,3 +204,33 @@ TEST(CartesianWallController, SingleJointWallLimitsOnlyAffectSelectedJoint) {
   EXPECT_LT(output.commanded_torque[3], 0.0);
   EXPECT_TRUE(output.wall_active[3]);
 }
+
+TEST(CartesianWallController, CommandWrenchInFreeAndWallRegions) {
+  auto settings = config();
+  settings.wall_stiffness.fill(0.0);
+  settings.wall_damping.fill(0.0);
+  settings.wall_torque_cap.fill(0.0);
+  settings.overlay_torque_cap.fill(0.0);
+  settings.wall_stiffness[3] = 40.0;
+  settings.wall_damping[3] = 2.0;
+  settings.wall_torque_cap[3] = 8.0;
+  settings.overlay_torque_cap[3] = 8.0;
+
+  CartesianWallController controller(settings);
+  controller.activate(Eigen::Isometry3d::Identity());
+
+  // In free region: commanded_wrench is exactly zero
+  auto state = input();
+  state.jacobian.setIdentity();
+  const auto free_output = controller.update(state);
+  for (int i = 0; i < 6; ++i) {
+    EXPECT_DOUBLE_EQ(free_output.commanded_wrench[i], 0.0);
+  }
+
+  // Inside upper wall on joint 3: commanded_wrench is non-zero
+  state.q[3] = 1.9;
+  state.dq[3] = 0.5;
+  const auto wall_output = controller.update(state);
+  EXPECT_LT(wall_output.wall_torque[3], 0.0);
+  EXPECT_TRUE(wall_output.commanded_wrench.norm() > 0.0);
+}

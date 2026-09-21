@@ -22,6 +22,7 @@ import com.kuka.roboticsAPI.deviceModel.LBR;
 import com.kuka.roboticsAPI.geometricModel.CartDOF;
 import com.kuka.roboticsAPI.motionModel.IMotionContainer;
 import com.kuka.roboticsAPI.motionModel.controlModeModel.CartesianImpedanceControlMode;
+import com.kuka.roboticsAPI.motionModel.controlModeModel.PositionControlMode;
 import com.kuka.roboticsAPI.uiModel.userKeys.IUserKey;
 import com.kuka.roboticsAPI.uiModel.userKeys.IUserKeyBar;
 import com.kuka.roboticsAPI.uiModel.userKeys.IUserKeyListener;
@@ -30,7 +31,8 @@ import com.kuka.roboticsAPI.uiModel.userKeys.UserKeyEvent;
 
 public class FRICartesianWall extends RoboticsAPIApplication {
     private static final String REMOTE_HOST = "192.170.10.1"; // PC running the FRI client
-    private static final int SEND_PERIOD_MS = 2; // In Cartesian impedance mode, FRI requires sendPeriod <= 4 ms (typically 1 ms or 2 ms)
+    // FRI TORQUE overlays require joint impedance and a send period of 5 ms or less.
+    private static final int SEND_PERIOD_MS = 2;
     private static final long POLL_MS = 20;
     private static final long EDGE_LOCKOUT_NS = 1000000000L;
     private static final double WALL_INSET = Math.toRadians(10.0);
@@ -63,7 +65,7 @@ public class FRICartesianWall extends RoboticsAPIApplication {
         configuration.setReceiveMultiplier(1);
         configuration.registerIO(mediaFlange.getOutput("Output1"));
         session = new FRISession(configuration);
-        overlay = new FRIJointOverlay(session, ClientCommandMode.TORQUE);
+        overlay = new FRIJointOverlay(session, ClientCommandMode.WRENCH);
     }
 
     @Override public void run() {
@@ -88,7 +90,7 @@ public class FRICartesianWall extends RoboticsAPIApplication {
                 if (observedEdge()) {
                     if (motion != null) {
                         // STOP is never debounced: an accepted start must always be reversible.
-                        stopOverlayAndConfirm();
+                        stopOverlayAndConfirm(true);
                     } else if (startLockoutPassed()) {
                         try {
                             startOverlay();
@@ -111,8 +113,9 @@ public class FRICartesianWall extends RoboticsAPIApplication {
                 getLogger().error("at " + frame.toString());
         } finally {
             stopping = true;
-            try { stopOverlayAndConfirm(); }
+            try { stopOverlayAndConfirm(false); }
             catch (Exception ex) { getLogger().error("Final motion stop failed: " + ex); }
+            if (session != null) session.close();
         }
     }
 
@@ -130,6 +133,7 @@ public class FRICartesianWall extends RoboticsAPIApplication {
     private static final double LOW_DAMPING = 0.2;
 
     private void holdStiffPosition() {
+        if (stopping) return;
         IMotionContainer current = holdMotion;
         if (current == null || current.isFinished()) {
             CartesianImpedanceControlMode highMode = new CartesianImpedanceControlMode();
@@ -198,8 +202,10 @@ public class FRICartesianWall extends RoboticsAPIApplication {
             if (!(dt > 0.0 && dt <= 0.100))
                 throw new IllegalStateException("Startup sampling timeout");
             for (int i = 0; i < 7; ++i)
-                if (Math.abs(current[i] - previous[i]) / dt > Math.toRadians(1.0))
-                    throw new IllegalStateException("Robot moving before FRI start: A" + (i + 1));
+                if (Math.abs(current[i] - previous[i]) / dt > Math.toRadians(0.5))
+                    throw new IllegalStateException("Robot moving before FRI start: A" + (i + 1)
+                        + " speed_deg_s=" + Math.toDegrees(Math.abs(current[i] - previous[i]) / dt)
+                        + " allowed_deg_s=0.5 dt_ms=" + dt * 1000.0);
             previous = current;
             previousTime = now;
         }
@@ -207,8 +213,10 @@ public class FRICartesianWall extends RoboticsAPIApplication {
         double[] finalPosition = lbr.getCurrentJointPosition().get();
         checkStartupInsideFreeRegion(finalPosition, lower, upper);
         for (int i = 0; i < 7; ++i)
-            if (Math.abs(finalPosition[i] - previous[i]) > Math.toRadians(0.1))
-                throw new IllegalStateException("Robot moved immediately before FRI start: A" + (i + 1));
+            if (Math.abs(finalPosition[i] - previous[i]) > Math.toRadians(0.05))
+                throw new IllegalStateException("Robot moved immediately before FRI start: A" + (i + 1)
+                    + " delta_deg=" + Math.toDegrees(Math.abs(finalPosition[i] - previous[i]))
+                    + " allowed_deg=0.05");
 
         // Stability confirmed while held; now transition seamlessly to compliant overlay motion
         cancelHoldMotion();
@@ -216,11 +224,13 @@ public class FRICartesianWall extends RoboticsAPIApplication {
         CartesianImpedanceControlMode freeMode = new CartesianImpedanceControlMode();
         freeMode.parametrize(CartDOF.ALL).setStiffness(LOW_STIFFNESS);
         freeMode.parametrize(CartDOF.ALL).setDamping(LOW_DAMPING);
+        freeMode.setNullSpaceStiffness(0.0);
+        freeMode.setNullSpaceDamping(0.2);
         synchronized (this) {
             if (stopping || motion != null) return;
             motion = lbr.moveAsync(positionHold(freeMode, -1, null).addMotionOverlay(overlay));
         }
-        getLogger().info("FRI torque overlay STARTED (Cartesian free mode with A4 limit); PC controller owns overlay torque.");
+        getLogger().info("FRI WRENCH overlay STARTED (Cartesian free mode with A4 soft wall); PC controller owns overlay wrench.");
     }
 
     private void checkStartupInsideFreeRegion(double[] q, double[] lower, double[] upper) {
@@ -229,7 +239,6 @@ public class FRICartesianWall extends RoboticsAPIApplication {
                 throw new IllegalStateException("Non-finite joint position at A" + (i + 1));
             }
         }
-        // Wall margin checked on joint A4 (index 3) only, matching PC controller
         double requiredMargin = WALL_INSET + STARTUP_CLEARANCE;
         int i = 3;
         if (q[i] <= lower[i] + requiredMargin || q[i] >= upper[i] - requiredMargin) {
@@ -238,7 +247,7 @@ public class FRICartesianWall extends RoboticsAPIApplication {
         }
     }
 
-    private void stopOverlayAndConfirm() throws InterruptedException {
+    private void stopOverlayAndConfirm(boolean returnToIdleHold) throws InterruptedException {
         IMotionContainer current = motion;
         if (current != null) {
             if (!current.isFinished()) current.cancel();
@@ -250,10 +259,16 @@ public class FRICartesianWall extends RoboticsAPIApplication {
             }
             motion = null;
         }
-        holdStiffPosition();
+        if (returnToIdleHold) {
+            holdStiffPosition();
+        } else {
+            cancelHoldMotion();
+        }
         // Rebase so edges occurring during cleanup do not become delayed starts.
         previousOutput = mediaFlange.getOutput1();
-        getLogger().info("FRI torque overlay STOPPED; robot locked in stiff PositionHold; back in monitoring/idle.");
+        getLogger().info(returnToIdleHold
+            ? "FRI torque overlay STOPPED; robot locked in stiff PositionHold; back in monitoring/idle."
+            : "FRI torque overlay STOPPED.");
     }
 
     @Override public void dispose() {

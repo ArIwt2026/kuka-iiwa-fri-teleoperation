@@ -35,7 +35,7 @@ def generate_launch_description() -> LaunchDescription:
         "camera_serial", default_value="035322250957",
         description="Optional RealSense D455 serial number.")
     fri_control = DeclareLaunchArgument(
-        "fri_control", default_value="true",
+        "fri_control", default_value="false",
         description="Use the opt-in FRI torque Cartesian-wall client instead of monitor-only.")
 
     return LaunchDescription(

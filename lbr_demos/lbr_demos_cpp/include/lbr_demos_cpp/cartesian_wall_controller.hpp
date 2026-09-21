@@ -30,6 +30,9 @@ struct CartesianWallConfig {
   double startup_clearance{0.0};
   double prediction{0.0};
   double outward_task_scale{0.0};
+  double force_cap{30.0};
+  double torque_cap{10.0};
+  double wrench_rate{100.0};
   Vector6 cartesian_stiffness{Vector6::Zero()};
   Vector6 cartesian_damping{Vector6::Zero()};
 
@@ -37,6 +40,9 @@ struct CartesianWallConfig {
     if (!std::isfinite(activation) || !std::isfinite(full_wall_reserve) ||
         !std::isfinite(startup_clearance) || !std::isfinite(prediction) ||
         !std::isfinite(outward_task_scale) ||
+        !std::isfinite(force_cap) || force_cap <= 0.0 ||
+        !std::isfinite(torque_cap) || torque_cap <= 0.0 ||
+        !std::isfinite(wrench_rate) || wrench_rate <= 0.0 ||
         activation <= full_wall_reserve || full_wall_reserve <= 0.0 || prediction < 0.0 ||
         startup_clearance < 0.0 || outward_task_scale < 0.0 || outward_task_scale > 1.0) {
       throw std::invalid_argument("Invalid Cartesian-wall scalar configuration");
@@ -72,6 +78,7 @@ struct CartesianWallOutput {
   JointArray cartesian_torque{};
   JointArray wall_torque{};
   JointArray commanded_torque{};
+  Vector6 commanded_wrench{Vector6::Zero()};
   std::array<bool, kJoints> wall_active{};
 };
 
@@ -87,12 +94,14 @@ class CartesianWallController {
     }
     reference_pose_ = measured_pose;
     previous_command_.fill(0.0);
+    previous_wrench_.setZero();
     active_ = true;
   }
 
   void deactivate() {
     active_ = false;
     previous_command_.fill(0.0);
+    previous_wrench_.setZero();
   }
 
   bool active() const { return active_; }
@@ -185,6 +194,33 @@ class CartesianWallController {
       output.commanded_torque[i] = commanded;
     }
     previous_command_ = output.commanded_torque;
+
+    // Map total commanded torque (wall torque + task torque) to TCP wrench:
+    // W = (J J^T + lambda^2 I)^(-1) * J * commanded_torque
+    Eigen::Matrix<double, 7, 1> total_tau;
+    for (std::size_t i = 0; i < kJoints; ++i) {
+      total_tau[static_cast<Eigen::Index>(i)] = output.commanded_torque[i];
+    }
+    const double lambda = 0.02;
+    Eigen::Matrix<double, 6, 6> A = input.jacobian * input.jacobian.transpose() +
+                                    (lambda * lambda) * Eigen::Matrix<double, 6, 6>::Identity();
+    Vector6 raw_wrench = A.ldlt().solve(input.jacobian * total_tau);
+
+    raw_wrench.head<3>() = raw_wrench.head<3>().cwiseMax(-config_.force_cap).cwiseMin(config_.force_cap);
+    raw_wrench.tail<3>() = raw_wrench.tail<3>().cwiseMax(-config_.torque_cap).cwiseMin(config_.torque_cap);
+
+    const double max_wrench_delta = config_.wrench_rate * input.dt;
+    Vector6 commanded_wrench = Vector6::Zero();
+    for (int i = 0; i < 6; ++i) {
+      commanded_wrench[i] = std::clamp(raw_wrench[i],
+                                       previous_wrench_[i] - max_wrench_delta,
+                                       previous_wrench_[i] + max_wrench_delta);
+    }
+    if (!commanded_wrench.allFinite()) {
+      throw std::runtime_error("Controller produced non-finite wrench");
+    }
+    output.commanded_wrench = commanded_wrench;
+    previous_wrench_ = commanded_wrench;
     return output;
   }
 
@@ -192,6 +228,7 @@ class CartesianWallController {
   CartesianWallConfig config_;
   Eigen::Isometry3d reference_pose_{Eigen::Isometry3d::Identity()};
   JointArray previous_command_{};
+  Vector6 previous_wrench_{Vector6::Zero()};
   bool active_{false};
 };
 

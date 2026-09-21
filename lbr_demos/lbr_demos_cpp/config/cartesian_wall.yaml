@@ -4,8 +4,8 @@
     limit_lower: [-2.9670597284, -2.0943951024, -2.9670597284, -2.0943951024, -2.9670597284, -2.0943951024, -3.0543261910]
     limit_upper: [ 2.9670597284,  2.0943951024,  2.9670597284,  2.0943951024,  2.9670597284,  2.0943951024,  3.0543261910]
 
-    # Per-joint wall gains: active on joint 4 (A4 / J4) only; other joints have zero wall limits.
-    limit_stiffness: [0.0, 0.0, 0.0, 500.0, 0.0, 0.0, 0.0]
+    # Soft wall on joint 4 (A4 / J4) only; other joints have zero wall limits.
+    limit_stiffness: [0.0, 0.0, 0.0, 400.0, 0.0, 0.0, 0.0]
     limit_damping: [0.0, 0.0, 0.0, 6.0, 0.0, 0.0, 0.0]
     limit_torque_cap: [0.0, 0.0, 0.0, 8.0, 0.0, 0.0, 0.0]
     limit_activation_deg: 10.0
@@ -13,14 +13,19 @@
     startup_clearance_deg: 1.0
     limit_prediction_seconds: 0.1
 
-    # Overlay-only limits; overlay torque active on joint 4 (A4 / J4) only.
+    # Overlay limits; active on joint 4 (A4 / J4) only.
     overlay_torque_cap: [0.0, 0.0, 0.0, 8.0, 0.0, 0.0, 0.0]
     overlay_torque_rate: [50.0, 50.0, 40.0, 40.0, 15.0, 15.0, 10.0]
     outward_task_scale: 0.0
     velocity_filter: 0.2
 
-    # First commissioning mode matches the Panda behavior: no Cartesian spring,
-    # only joint-limit walls. Non-zero gains require a separate review.
+    # FRI Cartesian Wrench parameters
+    force_cap: 30.0
+    torque_cap: 10.0
+    wrench_rate: 100.0
+
+    # Zero Cartesian stiffness and damping: free Cartesian behavior for this test.
+    # The reference pose is still captured when START is accepted.
     cartesian_stiffness: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
     cartesian_damping: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
     chain_root: iiwa7_link_0

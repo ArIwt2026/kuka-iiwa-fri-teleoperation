@@ -128,7 +128,7 @@ class FriCartesianWallClient final : public KUKA::FRI::LBRClient {
     has_state_.store(false, std::memory_order_release);
     has_output_readback_.store(false, std::memory_order_release);
     controller_.deactivate();
-    command_.fill(0.0);
+    wrench_command_.fill(0.0);
   }
 
   void onStateChange(KUKA::FRI::ESessionState old_state,
@@ -136,7 +136,7 @@ class FriCartesianWallClient final : public KUKA::FRI::LBRClient {
     controller_.deactivate();
     velocity_initialized_ = false;
     filtered_dq_.fill(0.0);
-    command_.fill(0.0);
+    wrench_command_.fill(0.0);
     commanding_authorized_.store(false, std::memory_order_release);
     const bool interrupted =
         (old_state == KUKA::FRI::COMMANDING_ACTIVE ||
@@ -169,23 +169,23 @@ class FriCartesianWallClient final : public KUKA::FRI::LBRClient {
   void waitForCommand() override {
     const auto state = sample_state();
     robotCommand().setJointPosition(state.q.data());
-    command_.fill(0.0);
-    robotCommand().setTorque(command_.data());
+    wrench_command_.fill(0.0);
+    robotCommand().setWrench(wrench_command_.data());
     apply_output_command();
   }
 
   void command() override {
-    if (robotState().getClientCommandMode() != KUKA::FRI::EClientCommandMode::TORQUE ||
+    if (robotState().getClientCommandMode() != KUKA::FRI::EClientCommandMode::WRENCH ||
         robotState().getControlMode() != KUKA::FRI::EControlMode::CART_IMP_CONTROL_MODE) {
-      throw std::runtime_error("Expected FRI TORQUE with CART_IMP_CONTROL_MODE");
+      throw std::runtime_error("Expected FRI WRENCH with CART_IMP_CONTROL_MODE");
     }
     const auto state = sample_state();
     robotCommand().setJointPosition(state.q.data());
     if (!commanding_authorized_.load(std::memory_order_acquire) ||
         fault_latched_.load(std::memory_order_acquire)) {
       controller_.deactivate();
-      command_.fill(0.0);
-      robotCommand().setTorque(command_.data());
+      wrench_command_.fill(0.0);
+      robotCommand().setWrench(wrench_command_.data());
       apply_output_command();
       return;
     }
@@ -198,10 +198,10 @@ class FriCartesianWallClient final : public KUKA::FRI::LBRClient {
         fault_latched_.store(true, std::memory_order_release);
         run_requested_.store(false, std::memory_order_release);
         commanding_authorized_.store(false, std::memory_order_release);
-        command_.fill(0.0);
+        wrench_command_.fill(0.0);
         const bool readback = output_readback_.load(std::memory_order_relaxed);
         output_command_.store(readback ? 0 : 1, std::memory_order_release);
-        robotCommand().setTorque(command_.data());
+        robotCommand().setWrench(wrench_command_.data());
         apply_output_command();
         RCLCPP_ERROR(node_.get_logger(), "Controller START refused: %s", exception.what());
         return;
@@ -216,8 +216,10 @@ class FriCartesianWallClient final : public KUKA::FRI::LBRClient {
     const auto &kdl_jacobian = kinematics_.compute_jacobian(state.q);
     input.jacobian = kdl_jacobian.data;
     const auto output = controller_.update(input);
-    command_ = output.commanded_torque;
-    robotCommand().setTorque(command_.data());
+    for (int i = 0; i < 6; ++i) {
+      wrench_command_[static_cast<std::size_t>(i)] = output.commanded_wrench[i];
+    }
+    robotCommand().setWrench(wrench_command_.data());
     apply_output_command();
   }
 
@@ -243,6 +245,9 @@ class FriCartesianWallClient final : public KUKA::FRI::LBRClient {
         node.declare_parameter("startup_clearance_deg", 1.0) * M_PI / 180.0;
     config.prediction = node.declare_parameter("limit_prediction_seconds", 0.1);
     config.outward_task_scale = node.declare_parameter("outward_task_scale", 0.0);
+    config.force_cap = node.declare_parameter("force_cap", 30.0);
+    config.torque_cap = node.declare_parameter("torque_cap", 10.0);
+    config.wrench_rate = node.declare_parameter("wrench_rate", 100.0);
     const auto stiffness = read_array<6>(node, "cartesian_stiffness");
     const auto damping = read_array<6>(node, "cartesian_damping");
     for (Eigen::Index i = 0; i < 6; ++i) {
@@ -342,7 +347,7 @@ class FriCartesianWallClient final : public KUKA::FRI::LBRClient {
   int feedback_timeout_ms_{100};
   lbr_demos_cpp::JointArray previous_q_{};
   lbr_demos_cpp::JointArray filtered_dq_{};
-  lbr_demos_cpp::JointArray command_{};
+  std::array<double, 6> wrench_command_{};
   bool velocity_initialized_{false};
   std::uint64_t previous_robot_timestamp_ns_{0};
   std::array<std::atomic<double>, 7> position_{};

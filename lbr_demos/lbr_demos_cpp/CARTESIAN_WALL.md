@@ -20,8 +20,9 @@ torque then follows the configured per-joint slew rate.
 
 The default configuration intentionally sets all six Cartesian stiffness and damping values to
 zero. It therefore behaves like the Panda zero-impedance controller: model compensation from the
-robot controller plus seven independently configured joint-wall springs. Non-zero Cartesian
-gains are supported by the PC controller but are not enabled by the supplied configuration.
+robot controller plus seven independently configured joint-wall springs. The supplied wall
+stiffness is 500 Nm/rad for A1--A4 and 50 Nm/rad for A5--A7. Non-zero Cartesian gains are
+supported by the PC controller but are not enabled by the supplied configuration.
 
 The Sunrise joint-impedance controller is expected to provide robot-model compensation. This
 client therefore does not add estimated gravity or Coriolis torque. That behavior must be
@@ -69,7 +70,8 @@ Before any hardware run, verify all of the following in Sunrise Workbench and on
 1. FRI and client SDK are both compatible with 1.15.
 2. `FRICartesianWall.java` compiles without API substitutions.
 3. The actual tool/load and `lbr_link_ee` TCP agree with the URDF used by the PC.
-4. Torque overlay uses `ClientCommandMode.TORQUE` over zero-stiffness joint impedance.
+4. Torque overlay uses `ClientCommandMode.TORQUE` over zero-stiffness, zero-damping joint
+   impedance. This is required by FRI even when the PC control law is Cartesian.
 5. KUKA gravity, Coriolis and friction compensation remain active with a zero overlay.
 6. Output1 is registered for FRI and its initial level starts no motion.
 7. Cabinet safety configuration and collision protections remain unchanged.
