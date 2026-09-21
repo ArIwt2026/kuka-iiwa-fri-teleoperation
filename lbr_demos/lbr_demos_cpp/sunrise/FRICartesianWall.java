@@ -30,7 +30,7 @@ import com.kuka.roboticsAPI.uiModel.userKeys.UserKeyEvent;
 
 public class FRICartesianWall extends RoboticsAPIApplication {
     private static final String REMOTE_HOST = "192.170.10.1"; // PC running the FRI client
-    private static final int SEND_PERIOD_MS = 5;
+    private static final int SEND_PERIOD_MS = 2; // In Cartesian impedance mode, FRI requires sendPeriod <= 4 ms (typically 1 ms or 2 ms)
     private static final long POLL_MS = 20;
     private static final long EDGE_LOCKOUT_NS = 1000000000L;
     private static final double WALL_INSET = Math.toRadians(10.0);
