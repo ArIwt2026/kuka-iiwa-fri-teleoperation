@@ -207,15 +207,17 @@ public class FRICartesianWall extends RoboticsAPIApplication {
     }
 
     private void checkStartupInsideFreeRegion(double[] q, double[] lower, double[] upper) {
-        double requiredMargin = WALL_INSET + STARTUP_CLEARANCE;
         for (int i = 0; i < 7; ++i) {
-            if (Double.isNaN(q[i]) || Double.isInfinite(q[i]) ||
-                    q[i] <= lower[i] + requiredMargin ||
-                    q[i] >= upper[i] - requiredMargin) {
-                throw new IllegalStateException("A" + (i + 1)
-                    + " starts inside joint-wall region; required distance from each model limit is > "
-                    + Math.toDegrees(requiredMargin) + " deg");
+            if (Double.isNaN(q[i]) || Double.isInfinite(q[i])) {
+                throw new IllegalStateException("Non-finite joint position at A" + (i + 1));
             }
+        }
+        // Wall margin checked on joint A4 (index 3) only, matching PC controller
+        double requiredMargin = WALL_INSET + STARTUP_CLEARANCE;
+        int i = 3;
+        if (q[i] <= lower[i] + requiredMargin || q[i] >= upper[i] - requiredMargin) {
+            throw new IllegalStateException("A4 starts inside joint-wall region; required distance from limit is > "
+                + Math.toDegrees(requiredMargin) + " deg");
         }
     }
 

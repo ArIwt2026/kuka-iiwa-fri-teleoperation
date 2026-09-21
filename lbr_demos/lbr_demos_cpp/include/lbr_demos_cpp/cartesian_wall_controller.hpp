@@ -52,8 +52,8 @@ struct CartesianWallConfig {
           !std::isfinite(wall_torque_cap[i]) || !std::isfinite(overlay_torque_cap[i]) ||
           !std::isfinite(overlay_torque_rate[i]) ||
           upper[i] - lower[i] <= 2.0 * (activation + startup_clearance) ||
-          wall_stiffness[i] <= 0.0 || wall_damping[i] < 0.0 || wall_torque_cap[i] <= 0.0 ||
-          overlay_torque_cap[i] <= 0.0 || overlay_torque_rate[i] <= 0.0) {
+          wall_stiffness[i] < 0.0 || wall_damping[i] < 0.0 || wall_torque_cap[i] < 0.0 ||
+          overlay_torque_cap[i] < 0.0 || overlay_torque_rate[i] <= 0.0) {
         throw std::invalid_argument("Invalid joint configuration at index " + std::to_string(i));
       }
     }
@@ -99,6 +99,7 @@ class CartesianWallController {
 
   void validate_startup(const JointArray &q) const {
     for (std::size_t i = 0; i < kJoints; ++i) {
+      if (config_.wall_stiffness[i] <= 0.0) continue;
       const double margin = config_.activation + config_.startup_clearance;
       if (!std::isfinite(q[i]) || q[i] <= config_.lower[i] + margin ||
           q[i] >= config_.upper[i] - margin) {

@@ -167,3 +167,40 @@ TEST(CartesianWallController, RejectsStartupInsideEitherWall) {
   q[0] = -1.8;
   EXPECT_THROW(controller.validate_startup(q), std::invalid_argument);
 }
+
+TEST(CartesianWallController, SingleJointWallLimitsOnlyAffectSelectedJoint) {
+  auto settings = config();
+  settings.wall_stiffness.fill(0.0);
+  settings.wall_damping.fill(0.0);
+  settings.wall_torque_cap.fill(0.0);
+  settings.overlay_torque_cap.fill(0.0);
+  // Enable wall limits only on joint index 3 (A4)
+  settings.wall_stiffness[3] = 20.0;
+  settings.wall_damping[3] = 2.0;
+  settings.wall_torque_cap[3] = 5.0;
+  settings.overlay_torque_cap[3] = 6.0;
+
+  CartesianWallController controller(settings);
+  // Joint 0 near limit should pass validate_startup because wall_stiffness[0] == 0
+  lbr_demos_cpp::JointArray q{};
+  q[0] = 1.95;
+  EXPECT_NO_THROW(controller.validate_startup(q));
+
+  // Joint 3 near limit should be rejected by validate_startup
+  q[3] = 1.95;
+  EXPECT_THROW(controller.validate_startup(q), std::invalid_argument);
+
+  // Update test: Joint 0 near limit produces zero torque; Joint 3 produces inward wall torque
+  q[3] = 0.0;
+  controller.activate(Eigen::Isometry3d::Identity());
+  auto state = input();
+  state.q[0] = 1.9;
+  state.dq[0] = 0.5;
+  state.q[3] = 1.9;
+  state.dq[3] = 0.5;
+  const auto output = controller.update(state);
+  EXPECT_DOUBLE_EQ(output.commanded_torque[0], 0.0);
+  EXPECT_FALSE(output.wall_active[0]);
+  EXPECT_LT(output.commanded_torque[3], 0.0);
+  EXPECT_TRUE(output.wall_active[3]);
+}
