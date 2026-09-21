@@ -1,0 +1,33 @@
+/**:
+  ros__parameters:
+    # iiwa 7 R800 model limits. Confirm against the exact cabinet model before commissioning.
+    limit_lower: [-2.9670597284, -2.0943951024, -2.9670597284, -2.0943951024, -2.9670597284, -2.0943951024, -3.0543261910]
+    limit_upper: [ 2.9670597284,  2.0943951024,  2.9670597284,  2.0943951024,  2.9670597284,  2.0943951024,  3.0543261910]
+
+    # Per-joint wall gains, matching the Panda guard's independently tuned axes.
+    # Initial commissioning values only; these are not safety-rated limits.
+    limit_stiffness: [500.0, 500.0, 500.0, 500.0, 50.0, 50.0, 50.0]
+    limit_damping: [8.0, 8.0, 6.0, 6.0, 2.0, 2.0, 1.5]
+    limit_torque_cap: [10.0, 10.0, 8.0, 8.0, 3.0, 3.0, 2.0]
+    limit_activation_deg: 10.0
+    limit_reserve_deg: 3.0
+    startup_clearance_deg: 1.0
+    limit_prediction_seconds: 0.1
+
+    # Overlay-only limits; the KUKA controller's model compensation is not included here.
+    overlay_torque_cap: [10.0, 10.0, 8.0, 8.0, 3.0, 3.0, 2.0]
+    overlay_torque_rate: [50.0, 50.0, 40.0, 40.0, 15.0, 15.0, 10.0]
+    outward_task_scale: 0.0
+    velocity_filter: 0.2
+
+    # First commissioning mode matches the Panda behavior: no Cartesian spring,
+    # only joint-limit walls. Non-zero gains require a separate review.
+    cartesian_stiffness: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    cartesian_damping: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    chain_root: iiwa7_link_0
+    chain_tip: iiwa7_link_ee
+
+    # PC-side communication health. Default 0 means blocking wait (matching fri_monitor and lbr_fri_ros2),
+    # avoiding KUKA FRI SDK select() timeout prints while waiting for Sunrise.
+    receive_timeout_ms: 0
+    feedback_timeout_ms: 100

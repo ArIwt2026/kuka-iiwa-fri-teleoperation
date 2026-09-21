@@ -1,5 +1,6 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
+from launch.conditions import IfCondition, UnlessCondition
 from launch.substitutions import Command, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
@@ -33,6 +34,9 @@ def generate_launch_description() -> LaunchDescription:
     camera_serial = DeclareLaunchArgument(
         "camera_serial", default_value="035322250957",
         description="Optional RealSense D455 serial number.")
+    fri_control = DeclareLaunchArgument(
+        "fri_control", default_value="true",
+        description="Use the opt-in FRI torque Cartesian-wall client instead of monitor-only.")
 
     return LaunchDescription(
         [
@@ -41,6 +45,7 @@ def generate_launch_description() -> LaunchDescription:
             gripper_ip,
             gripper_port,
             camera_serial,
+            fri_control,
             Node(
                 package="lbr_demos_cpp",
                 executable="fri_monitor",
@@ -51,6 +56,23 @@ def generate_launch_description() -> LaunchDescription:
                     {"controller_ip": "192.170.10.2", "port": 30200,
                      "robot_name": "iiwa7"}
                 ],
+                condition=UnlessCondition(LaunchConfiguration("fri_control")),
+            ),
+            Node(
+                package="lbr_demos_cpp",
+                executable="fri_cartesian_wall_client",
+                name="fri_cartesian_wall_client",
+                namespace="iiwa7",
+                output="screen",
+                parameters=[
+                    PathJoinSubstitution([
+                        FindPackageShare("lbr_demos_cpp"), "config", "cartesian_wall.yaml"
+                    ]),
+                    robot_description,
+                    {"controller_ip": "192.170.10.2", "port": 30200,
+                     "robot_name": "iiwa7"},
+                ],
+                condition=IfCondition(LaunchConfiguration("fri_control")),
             ),
             Node(
                 package="wsg50_driver",
@@ -62,6 +84,7 @@ def generate_launch_description() -> LaunchDescription:
                     {"gripper_ip": LaunchConfiguration("gripper_ip"),
                      "port": LaunchConfiguration("gripper_port")}
                 ],
+                remappings=[("~/joint_states", "/iiwa7/joint_states")],
             ),
             Node(
                 package="realsense2_camera",
@@ -72,6 +95,7 @@ def generate_launch_description() -> LaunchDescription:
                 parameters=[
                      {"camera_name": "d455", "tf_prefix": "kuka_",
                      "usb_port_id": "2-5.1.1",
+                     "initial_reset": True,
                      "enable_color": True,
                      "enable_depth": True,
                      "enable_infra1": False,
@@ -79,8 +103,10 @@ def generate_launch_description() -> LaunchDescription:
                      "enable_gyro": False,
                      "enable_accel": False,
                      "enable_motion": False,
-                     "enable_sync": True,
-                     "align_depth.enable": True}
+                     "enable_sync": False,
+                     "align_depth.enable": False,
+                     "rgb_camera.color_profile": "848x480x30",
+                     "depth_module.depth_profile": "848x480x30"}
                 ],
             ),
             Node(
