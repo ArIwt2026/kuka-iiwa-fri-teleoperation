@@ -6,7 +6,7 @@
 
     # Soft wall on joint 4 (A4 / J4) only; other joints have zero wall limits.
     limit_stiffness: [0.0, 0.0, 0.0, 400.0, 0.0, 0.0, 0.0]
-    limit_damping: [0.0, 0.0, 0.0, 6.0, 0.0, 0.0, 0.0]
+    limit_damping: [0.0, 0.0, 0.0, 1.5, 0.0, 0.0, 0.0]
     limit_torque_cap: [0.0, 0.0, 0.0, 8.0, 0.0, 0.0, 0.0]
     limit_activation_deg: 10.0
     limit_reserve_deg: 3.0

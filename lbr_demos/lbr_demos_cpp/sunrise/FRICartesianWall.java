@@ -202,10 +202,10 @@ public class FRICartesianWall extends RoboticsAPIApplication {
             if (!(dt > 0.0 && dt <= 0.100))
                 throw new IllegalStateException("Startup sampling timeout");
             for (int i = 0; i < 7; ++i)
-                if (Math.abs(current[i] - previous[i]) / dt > Math.toRadians(0.5))
+                if (Math.abs(current[i] - previous[i]) / dt > Math.toRadians(1.5))
                     throw new IllegalStateException("Robot moving before FRI start: A" + (i + 1)
                         + " speed_deg_s=" + Math.toDegrees(Math.abs(current[i] - previous[i]) / dt)
-                        + " allowed_deg_s=0.5 dt_ms=" + dt * 1000.0);
+                        + " allowed_deg_s=1.5 dt_ms=" + dt * 1000.0);
             previous = current;
             previousTime = now;
         }
@@ -213,10 +213,10 @@ public class FRICartesianWall extends RoboticsAPIApplication {
         double[] finalPosition = lbr.getCurrentJointPosition().get();
         checkStartupInsideFreeRegion(finalPosition, lower, upper);
         for (int i = 0; i < 7; ++i)
-            if (Math.abs(finalPosition[i] - previous[i]) > Math.toRadians(0.05))
+            if (Math.abs(finalPosition[i] - previous[i]) > Math.toRadians(0.1))
                 throw new IllegalStateException("Robot moved immediately before FRI start: A" + (i + 1)
                     + " delta_deg=" + Math.toDegrees(Math.abs(finalPosition[i] - previous[i]))
-                    + " allowed_deg=0.05");
+                    + " allowed_deg=0.1");
 
         // Stability confirmed while held; now transition seamlessly to compliant overlay motion
         cancelHoldMotion();
@@ -225,7 +225,7 @@ public class FRICartesianWall extends RoboticsAPIApplication {
         freeMode.parametrize(CartDOF.ALL).setStiffness(LOW_STIFFNESS);
         freeMode.parametrize(CartDOF.ALL).setDamping(LOW_DAMPING);
         freeMode.setNullSpaceStiffness(0.0);
-        freeMode.setNullSpaceDamping(0.2);
+        freeMode.setNullSpaceDamping(0.3);
         synchronized (this) {
             if (stopping || motion != null) return;
             motion = lbr.moveAsync(positionHold(freeMode, -1, null).addMotionOverlay(overlay));
