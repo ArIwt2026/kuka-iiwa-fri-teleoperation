@@ -1,11 +1,6 @@
 name: build-ubuntu-22.04-fri-1.14
 on:
-  pull_request:
-    branches:
-      - humble
   workflow_dispatch:
-  schedule:
-    - cron: "0 0 * * 0"
 
 jobs:
   build:
