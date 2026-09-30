@@ -22,6 +22,7 @@ find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(trajectory_msgs REQUIRED)
+find_package(yaml-cpp REQUIRED)
 
 include_directories(include)
 
@@ -103,6 +104,20 @@ target_link_libraries(fri_monitor
   FRIClient::FRIClient
 )
 
+# Standalone direct FRI POSITION client matching Sunrise's
+# FRIJointPositionImpedance application. Robot-reference shaping and target
+# freshness checks run in the native FRI callback.
+add_executable(kuka_fri_joint_impedance
+  ../../../../control/joint_impedance/src/kuka_fri_joint_impedance.cpp
+)
+target_include_directories(kuka_fri_joint_impedance PRIVATE
+  ../../../../control/joint_impedance/include
+)
+target_link_libraries(kuka_fri_joint_impedance PRIVATE
+  FRIClient::FRIClient
+  yaml-cpp
+)
+
 # Opt-in FRI torque client. The cabinet must run the matching Sunrise torque-overlay app.
 add_executable(fri_cartesian_wall_client
   src/fri_cartesian_wall_client.cpp
@@ -126,6 +141,7 @@ install(TARGETS
   torque_sine_overlay
   wrench_sine_overlay
   fri_monitor
+  kuka_fri_joint_impedance
   fri_cartesian_wall_client
   DESTINATION lib/${PROJECT_NAME}
 )
