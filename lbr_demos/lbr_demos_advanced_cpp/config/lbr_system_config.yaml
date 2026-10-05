@@ -29,9 +29,9 @@ estimated_ft_sensor: # estimates the external force-torque from the external joi
   chain_root: lbr_link_0
   chain_tip: lbr_link_ee
   damping: 0.2 # damping factor for the pseudo-inverse of the Jacobian
-  force_x_th: 2.0 # x-force threshold. Only if the force exceeds this value, the force will be considered
-  force_y_th: 2.0 # y-force threshold. Only if the force exceeds this value, the force will be considered
-  force_z_th: 2.0 # z-force threshold. Only if the force exceeds this value, the force will be considered
-  torque_x_th: 0.5 # x-torque threshold. Only if the torque exceeds this value, the torque will be considered
-  torque_y_th: 0.5 # y-torque threshold. Only if the torque exceeds this value, the torque will be considered
-  torque_z_th: 0.5 # z-torque threshold. Only if the torque exceeds this value, the torque will be considered
+  force_x_th: 0.5 # x-force threshold. Only if the force exceeds this value, the force will be considered
+  force_y_th: 0.5 # y-force threshold. Only if the force exceeds this value, the force will be considered
+  force_z_th: 0.5 # z-force threshold. Only if the force exceeds this value, the force will be considered
+  torque_x_th: 0.05 # x-torque threshold. Only if the torque exceeds this value, the torque will be considered
+  torque_y_th: 0.05 # y-torque threshold. Only if the torque exceeds this value, the torque will be considered
+  torque_z_th: 0.05 # z-torque threshold. Only if the torque exceeds this value, the torque will be considered

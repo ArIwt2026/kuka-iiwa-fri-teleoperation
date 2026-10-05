@@ -40,7 +40,7 @@ class LBRDescriptionMixin:
         ] = PathJoinSubstitution(
             [
                 FindPackageShare(
-                    LaunchConfiguration("sys_cfg_pkg", default="lbr_description")
+                    LaunchConfiguration("init_jnt_pos_pkg", default="lbr_description")
                 ),
                 LaunchConfiguration(
                     "init_jnt_pos", default="ros2_control/initial_joint_positions.yaml"

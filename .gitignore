@@ -4,3 +4,5 @@ COLCON_IGNORE
 build/
 install/
 log/
+rosbag_recording/
+telemetry/
