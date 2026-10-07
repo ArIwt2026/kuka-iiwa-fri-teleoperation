@@ -1,0 +1,9 @@
+# Home pose captured from the live /iiwa7/state measured_joint_position.
+# The controller uses radians, ordered A1 through A7.
+/**/admittance_controller:
+  ros__parameters:
+    home_joint_positions_rad:
+      [-0.12611155664790577, 0.07655079450919308, 0.07899048315097312,
+       -1.497705078441363, -0.028543163979933096, 1.570184412286569,
+       0.7619175314218799]
+    return_max_joint_velocity_rad_s: 0.30

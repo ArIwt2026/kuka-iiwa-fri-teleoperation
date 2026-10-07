@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cstring>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -13,7 +14,9 @@
 #include "hardware_interface/system_interface.hpp"
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "rclcpp/executors/single_threaded_executor.hpp"
 #include "rclcpp_lifecycle/state.hpp"
+#include "std_srvs/srv/trigger.hpp"
 
 #include "friClientVersion.h"
 #include "friLBRState.h"
@@ -82,6 +85,7 @@ protected:
 
 public:
   SystemInterface() = default;
+  ~SystemInterface() override;
 
   // hardware interface
   controller_interface::CallbackReturn
@@ -127,6 +131,10 @@ protected:
   // robot driver
   std::shared_ptr<lbr_fri_ros2::AsyncClient> async_client_ptr_;
   std::unique_ptr<lbr_fri_ros2::App> app_ptr_;
+  rclcpp::Node::SharedPtr media_flange_service_node_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr media_flange_toggle_service_;
+  rclcpp::executors::SingleThreadedExecutor::SharedPtr media_flange_service_executor_;
+  std::thread media_flange_service_thread_;
 
   // exposed state interfaces (ideally these are taken from async_client_ptr_ but
   // ros2_control ReadOnlyHandle does not allow for const pointers, refer
@@ -156,6 +164,7 @@ protected:
   void nan_last_hw_states_();
   void update_last_hw_states_();
   void compute_hw_velocity_();
+  void stop_media_flange_service_();
 
   // additional force-torque state interface
   lbr_fri_ros2::cart_array_t hw_ft_;

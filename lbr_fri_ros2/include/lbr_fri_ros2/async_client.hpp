@@ -2,6 +2,7 @@
 #define LBR_FRI_ROS2__ASYNC_CLIENT_HPP_
 
 #include <cstring>
+#include <atomic>
 #include <memory>
 #include <string>
 
@@ -36,6 +37,7 @@ public:
     return command_interface_ptr_;
   }
   inline std::shared_ptr<StateInterface> get_state_interface() { return state_interface_ptr_; }
+  bool toggle_media_flange_output1(bool &requested_state);
 
   void onStateChange(KUKA::FRI::ESessionState old_state,
                      KUKA::FRI::ESessionState new_state) override;
@@ -48,6 +50,9 @@ protected:
   std::shared_ptr<StateInterface> state_interface_ptr_;
 
   bool open_loop_;
+  void update_media_flange_output1_();
+  std::atomic<int> media_flange_output1_command_{-1};
+  std::atomic<int> media_flange_output1_readback_{-1};
 };
 } // namespace lbr_fri_ros2
 #endif // LBR_FRI_ROS2__ASYNC_CLIENT_HPP_

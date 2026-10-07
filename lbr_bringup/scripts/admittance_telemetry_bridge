@@ -1,0 +1,77 @@
+#!/usr/bin/env python3
+"""Publish the legacy iiwa7 telemetry topics from the active LBR state topic."""
+
+import rclpy
+from lbr_fri_idl.msg import LBRState
+from rclpy.node import Node
+from rclpy.qos import QoSProfile
+from sensor_msgs.msg import JointState
+
+
+class AdmittanceTelemetryBridge(Node):
+    def __init__(self):
+        super().__init__("admittance_telemetry_bridge")
+        self.declare_parameter("joint_prefix", "iiwa7")
+        self._joint_prefix = self.get_parameter("joint_prefix").value
+        self._joint_names = [f"{self._joint_prefix}_A{i}" for i in range(1, 8)]
+        self._last_position = None
+        self._last_stamp_ns = None
+
+        qos = QoSProfile(depth=10)
+        self._state_pub = self.create_publisher(LBRState, "fri_state", qos)
+        self._joint_state_pub = self.create_publisher(JointState, "joint_states", qos)
+        self._joint_command_pub = self.create_publisher(JointState, "joint_commands", qos)
+        self._state_sub = self.create_subscription(LBRState, "state", self._on_state, qos)
+
+    def _on_state(self, state):
+        # Preserve the full FRI state under the legacy topic name.
+        self._state_pub.publish(state)
+
+        now = self.get_clock().now()
+        stamp = now.to_msg()
+        stamp_ns = now.nanoseconds
+        measured = list(state.measured_joint_position)
+        sample_time = (
+            (stamp_ns - self._last_stamp_ns) * 1e-9
+            if self._last_stamp_ns is not None and stamp_ns > self._last_stamp_ns
+            else 0.0
+        )
+
+        velocity = [0.0] * 7
+        if self._last_position is not None and sample_time > 0.0:
+            velocity = [
+                (current - previous) / sample_time
+                for current, previous in zip(measured, self._last_position)
+            ]
+        self._last_position = measured
+        self._last_stamp_ns = stamp_ns
+
+        measured_msg = JointState()
+        measured_msg.header.stamp = stamp
+        measured_msg.name = self._joint_names
+        measured_msg.position = measured
+        measured_msg.velocity = velocity
+        measured_msg.effort = list(state.measured_torque)
+        self._joint_state_pub.publish(measured_msg)
+
+        commanded_msg = JointState()
+        commanded_msg.header.stamp = stamp
+        commanded_msg.name = self._joint_names
+        # Keep invalid commands invalid; never substitute measured positions.
+        commanded_msg.position = list(state.commanded_joint_position)
+        commanded_msg.effort = list(state.commanded_torque)
+        self._joint_command_pub.publish(commanded_msg)
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = AdmittanceTelemetryBridge()
+    try:
+        rclpy.spin(node)
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+
+if __name__ == "__main__":
+    main()

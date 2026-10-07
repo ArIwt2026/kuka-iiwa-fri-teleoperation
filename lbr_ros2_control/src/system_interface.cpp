@@ -1,6 +1,8 @@
 #include "lbr_ros2_control/system_interface.hpp"
 
 namespace lbr_ros2_control {
+SystemInterface::~SystemInterface() { stop_media_flange_service_(); }
+
 controller_interface::CallbackReturn
 SystemInterface::on_init(const hardware_interface::HardwareInfo &system_info) {
   auto ret = hardware_interface::SystemInterface::on_init(system_info);
@@ -102,6 +104,34 @@ SystemInterface::on_init(const hardware_interface::HardwareInfo &system_info) {
   if (!verify_gpios_()) {
     return controller_interface::CallbackReturn::ERROR;
   }
+
+  media_flange_service_node_ = std::make_shared<rclcpp::Node>("lbr_fri_io");
+  media_flange_toggle_service_ = media_flange_service_node_->create_service<std_srvs::srv::Trigger>(
+      "/fri/mediaflange_output1/toggle",
+      [this](const std::shared_ptr<std_srvs::srv::Trigger::Request> /*request*/,
+             std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
+        if (!async_client_ptr_) {
+          response->success = false;
+          response->message = "LBR FRI client is unavailable.";
+          return;
+        }
+        bool requested_state = false;
+        if (!async_client_ptr_->toggle_media_flange_output1(requested_state)) {
+          response->success = false;
+          response->message =
+              "No FRI Output1 readback is available or the previous request is unconfirmed.";
+          return;
+        }
+        response->success = true;
+        response->message = std::string("MediaFlange.Output1 = ") +
+                            (requested_state ? "true requested" : "false requested");
+      });
+  media_flange_service_executor_ =
+      std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
+  media_flange_service_executor_->add_node(media_flange_service_node_);
+  media_flange_service_thread_ = std::thread([this]() {
+    if (media_flange_service_executor_) media_flange_service_executor_->spin();
+  });
 
   return controller_interface::CallbackReturn::SUCCESS;
 }
@@ -265,12 +295,21 @@ controller_interface::CallbackReturn SystemInterface::on_activate(const rclcpp_l
 
 controller_interface::CallbackReturn
 SystemInterface::on_deactivate(const rclcpp_lifecycle::State &) {
+  stop_media_flange_service_();
   app_ptr_->request_stop();
   app_ptr_->close_udp_socket();
   if (ft_estimator_ptr_) {
     ft_estimator_ptr_->request_stop();
   }
   return controller_interface::CallbackReturn::SUCCESS;
+}
+
+void SystemInterface::stop_media_flange_service_() {
+  if (media_flange_service_executor_) media_flange_service_executor_->cancel();
+  if (media_flange_service_thread_.joinable()) media_flange_service_thread_.join();
+  media_flange_service_executor_.reset();
+  media_flange_toggle_service_.reset();
+  media_flange_service_node_.reset();
 }
 
 hardware_interface::return_type SystemInterface::read(const rclcpp::Time & /*time*/,

@@ -11,6 +11,7 @@
   <buildtool_depend>ament_cmake_python</buildtool_depend>
 
   <exec_depend>controller_manager</exec_depend>
+  <exec_depend>button_bridge</exec_depend>
   <exec_depend>gz_ros2_control</exec_depend>
   <exec_depend>joint_state_broadcaster</exec_depend>
   <exec_depend>joint_trajectory_controller</exec_depend>
@@ -28,7 +29,10 @@
   <exec_depend>ros_gz_bridge</exec_depend>
   <exec_depend>rviz2</exec_depend>
   <exec_depend>realsense2_camera</exec_depend>
+  <exec_depend>wsg50_description</exec_depend>
   <exec_depend>wsg50_driver</exec_depend>
+  <exec_depend>lbr_fri_idl</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>xacro</exec_depend>
 
   <export>

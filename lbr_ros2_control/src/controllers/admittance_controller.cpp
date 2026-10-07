@@ -1,5 +1,12 @@
 #include "lbr_ros2_control/controllers/admittance_controller.hpp"
 
+#include <algorithm>
+#include <cmath>
+#include <functional>
+#include <limits>
+#include <string>
+#include <vector>
+
 namespace lbr_ros2_control {
 AdmittanceController::AdmittanceController() {}
 
@@ -79,11 +86,36 @@ controller_interface::CallbackReturn AdmittanceController::on_init() {
       this->get_node()->declare_parameter("inv_jac_ctrl.cartesian_gains",
                                           std::vector<double>(lbr_fri_ros2::CARTESIAN_DOF, 0.0));
     }
+    if (!this->get_node()->has_parameter("home_joint_positions_rad")) {
+      this->get_node()->declare_parameter("home_joint_positions_rad", std::vector<double>{});
+    }
+    if (!this->get_node()->has_parameter("return_max_joint_velocity_rad_s")) {
+      this->get_node()->declare_parameter("return_max_joint_velocity_rad_s", 0.15);
+    }
     robot_description_ = this->get_node()->get_parameter("robot_description").as_string();
     if (robot_description_.empty()) {
       throw std::runtime_error("No robot description provided");
     }
     configure_joint_names_();
+    const auto home = this->get_node()->get_parameter("home_joint_positions_rad").as_double_array();
+    if (home.size() != lbr_fri_ros2::N_JNTS) {
+      throw std::runtime_error("home_joint_positions_rad must contain seven joint angles");
+    }
+    for (std::size_t i = 0; i < home.size(); ++i) {
+      if (!std::isfinite(home[i])) {
+        throw std::runtime_error("home_joint_positions_rad contains a non-finite value");
+      }
+      home_joint_positions_[i] = home[i];
+    }
+    return_max_joint_velocity_ =
+        this->get_node()->get_parameter("return_max_joint_velocity_rad_s").as_double();
+    if (!std::isfinite(return_max_joint_velocity_) || return_max_joint_velocity_ <= 0.0) {
+      throw std::runtime_error("return_max_joint_velocity_rad_s must be positive and finite");
+    }
+    teach_mode_service_ = this->get_node()->create_service<std_srvs::srv::Trigger>(
+        "~/teach_mode/toggle",
+        std::bind(&AdmittanceController::toggle_teach_mode_, this,
+                  std::placeholders::_1, std::placeholders::_2));
     configure_admittance_impl_();
     configure_inv_jac_ctrl_impl_();
     log_info_();
@@ -110,12 +142,81 @@ controller_interface::return_type AdmittanceController::update(const rclcpp::Tim
     ++i;
   });
 
+  const bool commanding_active =
+      (static_cast<int>(session_state_interface_ptr_->get().get_value()) ==
+       KUKA::FRI::ESessionState::COMMANDING_ACTIVE);
+  if (!commanding_active) {
+    session_active_prev_ = false;
+    return controller_interface::return_type::OK;
+  }
+
+  if (!session_active_prev_) {
+    session_active_prev_ = true;
+    double max_delta = 0.0;
+    for (std::size_t i = 0; i < lbr_fri_ros2::N_JNTS; ++i) {
+      return_start_positions_[i] = q_[i];
+      max_delta = std::max(max_delta, std::abs(home_joint_positions_[i] - q_[i]));
+    }
+    if (max_delta < 1e-3) {
+      active_teach_mode_ = TeachMode::HOME_HOLD;
+      requested_teach_mode_.store(TeachMode::HOME_HOLD, std::memory_order_release);
+    } else {
+      // A quintic profile has a peak normalized velocity of 1.875.
+      return_duration_ = std::max(2.0, 1.875 * max_delta / return_max_joint_velocity_);
+      return_elapsed_ = 0.0;
+      active_teach_mode_ = TeachMode::RETURN_HOME;
+      requested_teach_mode_.store(TeachMode::RETURN_HOME, std::memory_order_release);
+    }
+  }
+
   // compute forward kinematics
   auto chain_tip_frame = inv_jac_ctrl_impl_ptr_->get_kinematics_ptr()->compute_fk(q_);
   t_ = Eigen::Map<Eigen::Matrix<double, 3, 1>>(chain_tip_frame.p.data);
   r_ = Eigen::Quaterniond(chain_tip_frame.M.data);
 
-  // compute steady state position and orientation
+  const TeachMode requested_mode = requested_teach_mode_.load(std::memory_order_acquire);
+  if (requested_mode != active_teach_mode_) {
+    if (requested_mode == TeachMode::RETURN_HOME) {
+      double max_delta = 0.0;
+      for (std::size_t i = 0; i < lbr_fri_ros2::N_JNTS; ++i) {
+        return_start_positions_[i] = q_[i];
+        max_delta = std::max(max_delta, std::abs(home_joint_positions_[i] - q_[i]));
+      }
+      // A quintic profile has a peak normalized velocity of 1.875.
+      return_duration_ = std::max(2.0, 1.875 * max_delta / return_max_joint_velocity_);
+      return_elapsed_ = 0.0;
+    }
+    if (requested_mode == TeachMode::ADMITTANCE) {
+      initialized_ = false;
+      zero_all_values_();
+    }
+    active_teach_mode_ = requested_mode;
+  }
+
+  if (active_teach_mode_ == TeachMode::HOME_HOLD) {
+    for (std::size_t i = 0; i < lbr_fri_ros2::N_JNTS; ++i) {
+      command_interfaces_[i].set_value(home_joint_positions_[i]);
+    }
+    return controller_interface::return_type::OK;
+  }
+
+  if (active_teach_mode_ == TeachMode::RETURN_HOME) {
+    return_elapsed_ = std::min(return_duration_, return_elapsed_ + period.seconds());
+    const double u = return_elapsed_ / return_duration_;
+    const double blend = 10.0 * u * u * u - 15.0 * u * u * u * u + 6.0 * u * u * u * u * u;
+    for (std::size_t i = 0; i < lbr_fri_ros2::N_JNTS; ++i) {
+      command_interfaces_[i].set_value(
+          return_start_positions_[i] + blend * (home_joint_positions_[i] - return_start_positions_[i]));
+    }
+    if (u >= 1.0) {
+      active_teach_mode_ = TeachMode::HOME_HOLD;
+      requested_teach_mode_.store(TeachMode::HOME_HOLD, std::memory_order_release);
+    }
+    return controller_interface::return_type::OK;
+  }
+
+  // compute steady state position and orientation. It is reset when entering
+  // admittance so every teaching segment starts from the current robot pose.
   if (!initialized_) {
     t_init_ = t_;
     t_prev_ = t_init_;
@@ -152,11 +253,6 @@ controller_interface::return_type AdmittanceController::update(const rclcpp::Tim
     RCLCPP_ERROR(this->get_node()->get_logger(), "Inverse Jacobian controller not initialized.");
     return controller_interface::return_type::ERROR;
   }
-  if (static_cast<int>(session_state_interface_ptr_->get().get_value()) !=
-      KUKA::FRI::ESessionState::COMMANDING_ACTIVE) {
-    return controller_interface::return_type::OK;
-  }
-
   // compute the joint velocity from the twist command target
   inv_jac_ctrl_impl_ptr_->compute(twist_command_, q_, dq_);
 
@@ -188,13 +284,42 @@ AdmittanceController::on_activate(const rclcpp_lifecycle::State & /*previous_sta
     return controller_interface::CallbackReturn::ERROR;
   }
   zero_all_values_();
+  initialized_ = false;
+  session_active_prev_ = false;
+  active_teach_mode_ = TeachMode::RETURN_HOME;
+  requested_teach_mode_.store(TeachMode::RETURN_HOME, std::memory_order_release);
   return controller_interface::CallbackReturn::SUCCESS;
 }
 
 controller_interface::CallbackReturn
 AdmittanceController::on_deactivate(const rclcpp_lifecycle::State & /*previous_state*/) {
   clear_state_interfaces_();
+  initialized_ = false;
+  session_active_prev_ = false;
   return controller_interface::CallbackReturn::SUCCESS;
+}
+
+void AdmittanceController::toggle_teach_mode_(
+    const std::shared_ptr<std_srvs::srv::Trigger::Request> /*request*/,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
+  TeachMode current = requested_teach_mode_.load(std::memory_order_acquire);
+  while (true) {
+    if (current == TeachMode::RETURN_HOME) {
+      response->success = false;
+      response->message = "Return to home is already in progress.";
+      return;
+    }
+    const TeachMode next = current == TeachMode::HOME_HOLD ? TeachMode::ADMITTANCE
+                                                            : TeachMode::RETURN_HOME;
+    if (requested_teach_mode_.compare_exchange_weak(
+            current, next, std::memory_order_acq_rel, std::memory_order_acquire)) {
+      response->success = true;
+      response->message = next == TeachMode::ADMITTANCE
+                              ? "Admittance requested."
+                              : "Smooth return to configured home requested.";
+      return;
+    }
+  }
 }
 
 bool AdmittanceController::reference_state_interfaces_() {

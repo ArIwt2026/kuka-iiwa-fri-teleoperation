@@ -91,27 +91,29 @@ class LBRROS2ControlMixin:
         robot_description: Optional[
             Dict[str, str]
         ] = {},  # required for certain ROS 2 controllers in Humble
+        additional_parameters=None,
         **kwargs,
     ) -> Node:
+        parameters = [
+            {"use_sim_time": use_sim_time},
+            PathJoinSubstitution(
+                [
+                    FindPackageShare(
+                        LaunchConfiguration("ctrl_cfg_pkg", default="lbr_description")
+                    ),
+                    LaunchConfiguration(
+                        "ctrl_cfg", default="ros2_control/lbr_controllers.yaml"
+                    ),
+                ]
+            ),
+            robot_description,
+        ]
+        if additional_parameters:
+            parameters.extend(additional_parameters)
         return Node(
             package="controller_manager",
             executable="ros2_control_node",
-            parameters=[
-                {"use_sim_time": use_sim_time},
-                PathJoinSubstitution(
-                    [
-                        FindPackageShare(
-                            LaunchConfiguration(
-                                "ctrl_cfg_pkg", default="lbr_description"
-                            )
-                        ),
-                        LaunchConfiguration(
-                            "ctrl_cfg", default="ros2_control/lbr_controllers.yaml"
-                        ),
-                    ]
-                ),
-                robot_description,
-            ],
+            parameters=parameters,
             namespace=robot_name,
             remappings=[
                 ("~/robot_description", "robot_description"),

@@ -14,6 +14,11 @@ install(
   DESTINATION share/${PROJECT_NAME}
 )
 
+install(
+  PROGRAMS scripts/admittance_telemetry_bridge
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 # Launch mixins
 ament_python_install_package(lbr_bringup)
 

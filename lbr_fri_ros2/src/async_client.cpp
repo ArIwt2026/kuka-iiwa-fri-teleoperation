@@ -1,5 +1,7 @@
 #include "lbr_fri_ros2/async_client.hpp"
 
+#include "friException.h"
+
 namespace lbr_fri_ros2 {
 AsyncClient::AsyncClient(const KUKA::FRI::EClientCommandMode &client_command_mode,
                          const double &joint_position_tau,
@@ -69,7 +71,10 @@ void AsyncClient::onStateChange(KUKA::FRI::ESessionState old_state,
   command_interface_ptr_->init_command(state_interface_ptr_->get_state());
 }
 
-void AsyncClient::monitor() { state_interface_ptr_->set_state(robotState()); };
+void AsyncClient::monitor() {
+  state_interface_ptr_->set_state(robotState());
+  update_media_flange_output1_();
+}
 
 void AsyncClient::waitForCommand() {
   KUKA::FRI::LBRClient::waitForCommand();
@@ -77,6 +82,7 @@ void AsyncClient::waitForCommand() {
   command_interface_ptr_->init_command(state_interface_ptr_->get_state());
   command_interface_ptr_->buffered_command_to_fri(robotCommand(),
                                                   state_interface_ptr_->get_state());
+  update_media_flange_output1_();
 }
 
 void AsyncClient::command() {
@@ -107,5 +113,33 @@ void AsyncClient::command() {
       robotCommand(),
       state_interface_ptr_->get_state()); // current state accessed via state interface (allows for
                                           // open loop and is statically sized)
+  update_media_flange_output1_();
+}
+
+bool AsyncClient::toggle_media_flange_output1(bool &requested_state) {
+  const int readback = media_flange_output1_readback_.load(std::memory_order_acquire);
+  if (readback < 0) return false;
+
+  const int previous_command =
+      media_flange_output1_command_.load(std::memory_order_acquire);
+  if (previous_command >= 0 && previous_command != readback) return false;
+
+  const bool current = previous_command >= 0 ? previous_command == 1 : readback == 1;
+  requested_state = !current;
+  media_flange_output1_command_.store(requested_state ? 1 : 0, std::memory_order_release);
+  return true;
+}
+
+void AsyncClient::update_media_flange_output1_() {
+  try {
+    const bool readback = robotState().getBooleanIOValue("MediaFlange.Output1");
+    media_flange_output1_readback_.store(readback ? 1 : 0, std::memory_order_release);
+    const int command = media_flange_output1_command_.load(std::memory_order_acquire);
+    if (command >= 0) {
+      robotCommand().setBooleanIOValue("MediaFlange.Output1", command == 1);
+    }
+  } catch (const KUKA::FRI::FRIException &exception) {
+    (void)exception;
+  }
 }
 } // namespace lbr_fri_ros2
