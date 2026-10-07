@@ -47,21 +47,16 @@ latched, stale feedback is no longer published as fresh, and another explicit ST
 
 ## Launch selection
 
-Normal launches remain monitor-only:
+The integrated KUKA workcell now uses the ROS 2 hardware-control launch, which starts the
+`admittance_controller` by default:
 
 ```
-ros2 launch lbr_bringup fri_monitor_rviz.launch.py
+ros2 launch lbr_bringup hardware_iiwa7_workcell.launch.py ctrl:=admittance_controller
 ```
 
-The torque client is selected explicitly:
-
-```
-ros2 launch lbr_bringup fri_monitor_rviz.launch.py fri_control:=true
-```
-
-For the repository-level launch, the corresponding argument is `kuka_fri_control:=true`.
-Do not select control mode until the matching Sunrise application is installed, compiled and
-reviewed. Never start `SmartImpedance` or another arm-motion owner at the same time.
+The former `fri_monitor_rviz.launch.py` monitor-only launch has been removed. This workcell
+launch does not start the separate experimental Cartesian Wall torque client described here.
+Do not run that client or its Sunrise application alongside another arm-motion owner.
 
 ## Required cabinet verification
 
