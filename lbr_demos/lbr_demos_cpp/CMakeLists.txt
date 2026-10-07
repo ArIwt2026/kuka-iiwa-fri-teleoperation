@@ -19,7 +19,6 @@ find_package(lbr_fri_ros2 REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
 find_package(sensor_msgs REQUIRED)
-find_package(std_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(trajectory_msgs REQUIRED)
 find_package(yaml-cpp REQUIRED)
@@ -88,22 +87,6 @@ target_link_libraries(wrench_sine_overlay
   FRIClient::FRIClient
 )
 
-# FRI monitor-only joint-state publisher
-add_executable(fri_monitor
-  src/fri_monitor.cpp
-)
-
-ament_target_dependencies(fri_monitor
-  rclcpp
-  sensor_msgs
-  std_msgs
-  std_srvs
-)
-
-target_link_libraries(fri_monitor
-  FRIClient::FRIClient
-)
-
 # Standalone direct FRI POSITION client matching Sunrise's
 # FRIJointPositionImpedance application. Robot-reference shaping and target
 # freshness checks run in the native FRI callback.
@@ -140,7 +123,6 @@ install(TARGETS
   joint_trajectory_client
   torque_sine_overlay
   wrench_sine_overlay
-  fri_monitor
   kuka_fri_joint_impedance
   fri_cartesian_wall_client
   DESTINATION lib/${PROJECT_NAME}

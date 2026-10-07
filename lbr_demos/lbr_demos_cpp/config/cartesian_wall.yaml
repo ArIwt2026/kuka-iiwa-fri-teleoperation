@@ -31,7 +31,7 @@
     chain_root: iiwa7_link_0
     chain_tip: iiwa7_link_ee
 
-    # PC-side communication health. Default 0 means blocking wait (matching fri_monitor and lbr_fri_ros2),
+    # PC-side communication health. Default 0 means blocking wait (matching lbr_fri_ros2),
     # avoiding KUKA FRI SDK select() timeout prints while waiting for Sunrise.
     receive_timeout_ms: 0
     feedback_timeout_ms: 100
