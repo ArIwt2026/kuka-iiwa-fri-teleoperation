@@ -97,6 +97,13 @@ controller_interface::CallbackReturn AdmittanceController::on_init() {
       throw std::runtime_error("No robot description provided");
     }
     configure_joint_names_();
+    joint_command_publisher_ = this->get_node()->create_publisher<sensor_msgs::msg::JointState>(
+        "~/joint_commands", rclcpp::SensorDataQoS());
+    realtime_joint_command_publisher_ =
+        std::make_unique<realtime_tools::RealtimePublisher<sensor_msgs::msg::JointState>>(
+            joint_command_publisher_);
+    realtime_joint_command_publisher_->msg_.name.assign(joint_names_.begin(), joint_names_.end());
+    realtime_joint_command_publisher_->msg_.position.resize(lbr_fri_ros2::N_JNTS);
     const auto home = this->get_node()->get_parameter("home_joint_positions_rad").as_double_array();
     if (home.size() != lbr_fri_ros2::N_JNTS) {
       throw std::runtime_error("home_joint_positions_rad must contain seven joint angles");
@@ -128,7 +135,7 @@ controller_interface::CallbackReturn AdmittanceController::on_init() {
   return controller_interface::CallbackReturn::SUCCESS;
 }
 
-controller_interface::return_type AdmittanceController::update(const rclcpp::Time & /*time*/,
+controller_interface::return_type AdmittanceController::update(const rclcpp::Time &time,
                                                                const rclcpp::Duration &period) {
   // get estimated force-torque sensor values
   f_ext_.head(3) =
@@ -197,6 +204,7 @@ controller_interface::return_type AdmittanceController::update(const rclcpp::Tim
     for (std::size_t i = 0; i < lbr_fri_ros2::N_JNTS; ++i) {
       command_interfaces_[i].set_value(home_joint_positions_[i]);
     }
+    publish_joint_commands_(time, period);
     return controller_interface::return_type::OK;
   }
 
@@ -212,6 +220,7 @@ controller_interface::return_type AdmittanceController::update(const rclcpp::Tim
       active_teach_mode_ = TeachMode::HOME_HOLD;
       requested_teach_mode_.store(TeachMode::HOME_HOLD, std::memory_order_release);
     }
+    publish_joint_commands_(time, period);
     return controller_interface::return_type::OK;
   }
 
@@ -263,7 +272,25 @@ controller_interface::return_type AdmittanceController::update(const rclcpp::Tim
     ++i;
   });
 
+  publish_joint_commands_(time, period);
+
   return controller_interface::return_type::OK;
+}
+
+void AdmittanceController::publish_joint_commands_(const rclcpp::Time &time,
+                                                  const rclcpp::Duration &period) {
+  if (!std::isfinite(period.seconds()) || period.seconds() <= 0.0) return;
+  command_publish_elapsed_ += period.seconds();
+  constexpr double publish_period = 1.0 / 200.0;
+  if (command_publish_elapsed_ < publish_period) return;
+  command_publish_elapsed_ = std::fmod(command_publish_elapsed_, publish_period);
+  if (!realtime_joint_command_publisher_->trylock()) return;
+  auto &message = realtime_joint_command_publisher_->msg_;
+  message.header.stamp = time;
+  for (std::size_t i = 0; i < lbr_fri_ros2::N_JNTS; ++i) {
+    message.position[i] = command_interfaces_[i].get_value();
+  }
+  realtime_joint_command_publisher_->unlockAndPublish();
 }
 
 controller_interface::CallbackReturn
@@ -287,6 +314,7 @@ AdmittanceController::on_activate(const rclcpp_lifecycle::State & /*previous_sta
   initialized_ = false;
   session_active_prev_ = false;
   active_teach_mode_ = TeachMode::RETURN_HOME;
+  command_publish_elapsed_ = 0.0;
   requested_teach_mode_.store(TeachMode::RETURN_HOME, std::memory_order_release);
   return controller_interface::CallbackReturn::SUCCESS;
 }

@@ -56,8 +56,8 @@ class FriCartesianWallClient final : public KUKA::FRI::LBRClient {
  public:
   FriCartesianWallClient(rclcpp::Node &node, const std::string &robot_description)
       : node_(node),
-        kinematics_(robot_description, node.declare_parameter("chain_root", "iiwa7_link_0"),
-                    node.declare_parameter("chain_tip", "iiwa7_link_ee")),
+        kinematics_(robot_description, node.declare_parameter("chain_root", "lbr_link_0"),
+                    node.declare_parameter("chain_tip", "lbr_link_ee")),
         controller_(load_config(node)) {
     velocity_filter_ = node_.declare_parameter("velocity_filter", 0.2);
     feedback_timeout_ms_ = node_.declare_parameter("feedback_timeout_ms", 100);

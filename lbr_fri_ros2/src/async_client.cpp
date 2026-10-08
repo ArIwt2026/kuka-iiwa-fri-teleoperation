@@ -68,7 +68,7 @@ void AsyncClient::onStateChange(KUKA::FRI::ESessionState old_state,
 
   // initialize command
   state_interface_ptr_->set_state(robotState());
-  command_interface_ptr_->init_command(state_interface_ptr_->get_state());
+  command_interface_ptr_->init_command(state_interface_ptr_->get_state_for_fri());
 }
 
 void AsyncClient::monitor() {
@@ -79,9 +79,9 @@ void AsyncClient::monitor() {
 void AsyncClient::waitForCommand() {
   KUKA::FRI::LBRClient::waitForCommand();
   state_interface_ptr_->set_state(robotState());
-  command_interface_ptr_->init_command(state_interface_ptr_->get_state());
+  command_interface_ptr_->init_command(state_interface_ptr_->get_state_for_fri());
   command_interface_ptr_->buffered_command_to_fri(robotCommand(),
-                                                  state_interface_ptr_->get_state());
+                                                  state_interface_ptr_->get_state_for_fri());
   update_media_flange_output1_();
 }
 
@@ -111,7 +111,7 @@ void AsyncClient::command() {
   }
   command_interface_ptr_->buffered_command_to_fri(
       robotCommand(),
-      state_interface_ptr_->get_state()); // current state accessed via state interface (allows for
+      state_interface_ptr_->get_state_for_fri()); // current state accessed via state interface (allows for
                                           // open loop and is statically sized)
   update_media_flange_output1_();
 }

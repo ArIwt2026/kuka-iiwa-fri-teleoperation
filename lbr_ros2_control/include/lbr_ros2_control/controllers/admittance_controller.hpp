@@ -16,6 +16,8 @@
 #include "hardware_interface/loaned_state_interface.hpp"
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "realtime_tools/realtime_publisher.hpp"
+#include "sensor_msgs/msg/joint_state.hpp"
 #include "semantic_components/force_torque_sensor.hpp"
 #include "std_srvs/srv/trigger.hpp"
 
@@ -57,6 +59,7 @@ protected:
   void configure_inv_jac_ctrl_impl_();
   void zero_all_values_();
   void log_info_() const;
+  void publish_joint_commands_(const rclcpp::Time &time, const rclcpp::Duration &period);
   void toggle_teach_mode_(
       const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
       std::shared_ptr<std_srvs::srv::Trigger::Response> response);
@@ -95,6 +98,10 @@ protected:
   double return_duration_{2.0};
   double return_max_joint_velocity_{0.15};
   bool session_active_prev_{false};
+  rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_command_publisher_;
+  std::unique_ptr<realtime_tools::RealtimePublisher<sensor_msgs::msg::JointState>>
+      realtime_joint_command_publisher_;
+  double command_publish_elapsed_{0.0};
 };
 } // namespace lbr_ros2_control
 #endif // LBR_ROS2_CONTROL__ADMITTANCE_CONTROLLER_HPP_

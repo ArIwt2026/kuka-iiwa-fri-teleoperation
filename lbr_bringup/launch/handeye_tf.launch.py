@@ -6,7 +6,7 @@ from launch_ros.actions import Node
 
 def generate_launch_description() -> LaunchDescription:
     # Values from calib/result_handeye.yaml:
-    # calibrated_transform: iiwa7_link_ee -> d455_color_optical_frame
+    # calibrated_transform: lbr_link_ee -> d455_color_optical_frame
     return LaunchDescription(
         [
             Node(
@@ -30,7 +30,7 @@ def generate_launch_description() -> LaunchDescription:
                     "--qw",
                     "0.9219134951542509",
                     "--frame-id",
-                    "iiwa7_link_ee",
+                    "lbr_link_ee",
                     "--child-frame-id",
                     "d455_color_optical_frame",
                 ],

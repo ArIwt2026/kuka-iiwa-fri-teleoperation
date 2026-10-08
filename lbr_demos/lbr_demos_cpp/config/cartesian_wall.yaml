@@ -28,8 +28,8 @@
     # The reference pose is still captured when START is accepted.
     cartesian_stiffness: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
     cartesian_damping: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-    chain_root: iiwa7_link_0
-    chain_tip: iiwa7_link_ee
+    chain_root: lbr_link_0
+    chain_tip: lbr_link_ee
 
     # PC-side communication health. Default 0 means blocking wait (matching lbr_fri_ros2),
     # avoiding KUKA FRI SDK select() timeout prints while waiting for Sunrise.

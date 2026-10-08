@@ -33,9 +33,12 @@
   <exec_depend>wsg50_driver</exec_depend>
   <exec_depend>lbr_fri_idl</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>builtin_interfaces</exec_depend>
+  <exec_depend>diagnostic_msgs</exec_depend>
   <exec_depend>xacro</exec_depend>
 
   <export>
     <build_type>ament_cmake</build_type>
   </export>
+  <test_depend>ament_cmake_pytest</test_depend>
 </package>

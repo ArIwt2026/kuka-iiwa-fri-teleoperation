@@ -26,6 +26,7 @@ find_package(lbr_fri_ros2 REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(realtime_tools REQUIRED)
+find_package(sensor_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
 
 # LBR ROS 2 control library
@@ -62,6 +63,7 @@ set(AMENT_DEPENDENCIES
   pluginlib
   rclcpp
   realtime_tools
+  sensor_msgs
   std_srvs
 )
 ament_target_dependencies(

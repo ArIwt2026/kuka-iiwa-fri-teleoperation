@@ -69,47 +69,47 @@ Visualization Manager:
         Expand Link Details: false
         Expand Tree: false
         Link Tree Style: Links in Alphabetic Order
-        iiwa7_link_0:
+        lbr_link_0:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        iiwa7_link_1:
+        lbr_link_1:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        iiwa7_link_2:
+        lbr_link_2:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        iiwa7_link_3:
+        lbr_link_3:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        iiwa7_link_4:
+        lbr_link_4:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        iiwa7_link_5:
+        lbr_link_5:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        iiwa7_link_6:
+        lbr_link_6:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        iiwa7_link_7:
+        lbr_link_7:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        iiwa7_link_ee:
+        lbr_link_ee:
           Alpha: 1
           Show Axes: false
           Show Trail: false
@@ -276,23 +276,23 @@ Visualization Manager:
           Value: true
         kuka_d455_link:
           Value: true
-        iiwa7_link_0:
+        lbr_link_0:
           Value: true
-        iiwa7_link_1:
+        lbr_link_1:
           Value: true
-        iiwa7_link_2:
+        lbr_link_2:
           Value: true
-        iiwa7_link_3:
+        lbr_link_3:
           Value: true
-        iiwa7_link_4:
+        lbr_link_4:
           Value: true
-        iiwa7_link_5:
+        lbr_link_5:
           Value: true
-        iiwa7_link_6:
+        lbr_link_6:
           Value: true
-        iiwa7_link_7:
+        lbr_link_7:
           Value: true
-        iiwa7_link_ee:
+        lbr_link_ee:
           Value: true
         lucid_helios_depth_optical_frame:
           Value: true

@@ -90,6 +90,9 @@ if(BUILD_TESTING)
   ament_add_gtest(test_command_interfaces test/test_command_interfaces.cpp)
   target_link_libraries(test_command_interfaces lbr_fri_ros2)
 
+  ament_add_gtest(test_state_snapshot test/test_state_snapshot.cpp)
+  target_link_libraries(test_state_snapshot lbr_fri_ros2)
+
   # # some examples of how to use the interfaces
   # add_executable(test_position_command test/test_position_command.cpp)
   # target_link_libraries(test_position_command lbr_fri_ros2)

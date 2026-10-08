@@ -22,4 +22,11 @@ install(
 # Launch mixins
 ament_python_install_package(lbr_bringup)
 
+if(BUILD_TESTING)
+  find_package(ament_cmake_pytest REQUIRED)
+  ament_add_pytest_test(test_telemetry_timing test/test_telemetry_timing.py)
+  ament_add_pytest_test(test_telemetry_bridge test/test_telemetry_bridge.py
+    ENV ROS_DOMAIN_ID=172 ROS_LOCALHOST_ONLY=1 RMW_IMPLEMENTATION=rmw_fastrtps_cpp)
+endif()
+
 ament_package()

@@ -12,6 +12,7 @@
 
 #include "lbr_fri_idl/msg/lbr_state.hpp"
 #include "lbr_fri_ros2/filters.hpp"
+#include "lbr_fri_ros2/state_snapshot.hpp"
 #include "lbr_fri_ros2/types.hpp"
 
 namespace lbr_fri_ros2 {
@@ -28,7 +29,12 @@ public:
   StateInterface() = delete;
   StateInterface(const StateInterfaceParameters &state_interface_parameters = {0.04, 0.04});
 
-  inline const_idl_state_t_ref get_state() const { return state_; };
+  // External readers receive a complete, owned copy, never the FRI working state.
+  inline idl_state_t get_state() const { return snapshot_.read(); }
+
+  // Only the serialized FRI callback thread may use this reference. Command
+  // generation uses its current packet without taking the readers' mutex.
+  inline const_idl_state_t_ref get_state_for_fri() const { return state_; }
 
   void set_state(const_fri_state_t_ref state);
   void set_state_open_loop(const_fri_state_t_ref state, const_jnt_array_t_ref joint_position);
@@ -43,6 +49,7 @@ protected:
 
   std::atomic_bool state_initialized_;
   idl_state_t state_;
+  StateSnapshot<idl_state_t> snapshot_;
   StateInterfaceParameters parameters_;
   JointExponentialFilterArray external_torque_filter_, measured_torque_filter_;
 };

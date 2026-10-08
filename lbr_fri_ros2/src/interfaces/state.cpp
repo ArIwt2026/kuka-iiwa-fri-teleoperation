@@ -40,7 +40,8 @@ void StateInterface::set_state(const_fri_state_t_ref state) {
   external_torque_filter_.compute(state.getExternalTorque(), state_.external_torque);
   measured_torque_filter_.compute(state.getMeasuredTorque(), state_.measured_torque);
 
-  state_initialized_ = true;
+  snapshot_.publish(state_);
+  state_initialized_.store(true, std::memory_order_release);
 };
 
 void StateInterface::set_state_open_loop(const_fri_state_t_ref state,
@@ -80,7 +81,8 @@ void StateInterface::set_state_open_loop(const_fri_state_t_ref state,
   external_torque_filter_.compute(state.getExternalTorque(), state_.external_torque);
   measured_torque_filter_.compute(state.getMeasuredTorque(), state_.measured_torque);
 
-  state_initialized_ = true;
+  snapshot_.publish(state_);
+  state_initialized_.store(true, std::memory_order_release);
 }
 
 void StateInterface::init_filters_() {

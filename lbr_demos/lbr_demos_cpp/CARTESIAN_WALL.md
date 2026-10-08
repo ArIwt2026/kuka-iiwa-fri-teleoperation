@@ -70,7 +70,7 @@ Before any hardware run, verify all of the following in Sunrise Workbench and on
 5. KUKA gravity, Coriolis and friction compensation remain active with a zero overlay.
 6. Output1 is registered for FRI and its initial level starts no motion.
 7. Cabinet safety configuration and collision protections remain unchanged.
-8. The PC URDF chain `iiwa7_link_0` to `iiwa7_link_ee` matches the commissioned TCP.
+8. The PC URDF chain `lbr_link_0` to `lbr_link_ee` matches the commissioned TCP.
 
 Commission in T1 with approved supervision: monitoring first, state transitions second, zero
 overlay third, walls at artificial boundaries fourth, and only then reviewed Cartesian gains.
