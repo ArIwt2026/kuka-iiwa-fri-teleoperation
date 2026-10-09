@@ -15,7 +15,9 @@ install(
 )
 
 install(
-  PROGRAMS scripts/admittance_telemetry_bridge
+  PROGRAMS
+    scripts/admittance_telemetry_bridge
+    scripts/commanded_pose_visualizer
   DESTINATION lib/${PROJECT_NAME}
 )
 

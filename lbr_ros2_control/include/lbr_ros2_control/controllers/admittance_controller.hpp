@@ -96,7 +96,10 @@ protected:
   std::shared_ptr<rclcpp::Service<std_srvs::srv::Trigger>> teach_mode_service_;
   double return_elapsed_{0.0};
   double return_duration_{2.0};
-  double return_max_joint_velocity_{0.15};
+  double return_max_joint_velocity_{2.0};
+  double return_max_joint_acceleration_{2.0};
+  double admittance_elapsed_{0.0};
+  double admittance_damping_duration_{2.0};
   bool session_active_prev_{false};
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_command_publisher_;
   std::unique_ptr<realtime_tools::RealtimePublisher<sensor_msgs::msg::JointState>>

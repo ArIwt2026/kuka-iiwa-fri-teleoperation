@@ -276,6 +276,10 @@ Visualization Manager:
           Value: true
         kuka_d455_link:
           Value: true
+        kuka_commanded_ee:
+          Value: true
+        kuka_commanded_tcp:
+          Value: true
         lbr_link_0:
           Value: true
         lbr_link_1:
@@ -303,6 +307,8 @@ Visualization Manager:
         panda_hand_camera_link:
           Value: true
         panda_hand_tcp:
+          Value: true
+        panda_commanded_tcp:
           Value: true
         panda_d455_link:
           Value: true
@@ -405,6 +411,104 @@ Visualization Manager:
         History Policy: Keep Last
         Reliability Policy: Best Effort
         Value: /panda/d455/color/image_raw
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: Commanded Poses Markers
+      Topic:
+        Depth: 10
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /visualization/commanded_poses
+      Value: true
+    - Alpha: 1
+      Axes Length: 0.08
+      Axes Radius: 0.008
+      Class: rviz_default_plugins/Pose
+      Color: 0; 220; 255
+      Enabled: true
+      Head Length: 0.02
+      Head Radius: 0.015
+      Name: Panda Commanded Pose
+      Shaft Length: 0.06
+      Shaft Radius: 0.005
+      Shape: Axes
+      Topic:
+        Depth: 10
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /panda/commanded_pose_world
+      Value: true
+    - Alpha: 1
+      Axes Length: 0.08
+      Axes Radius: 0.008
+      Class: rviz_default_plugins/Pose
+      Color: 255; 140; 0
+      Enabled: true
+      Head Length: 0.02
+      Head Radius: 0.015
+      Name: KUKA Commanded Pose
+      Shaft Length: 0.06
+      Shaft Radius: 0.005
+      Shape: Axes
+      Topic:
+        Depth: 10
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /iiwa7/commanded_pose_world
+      Value: true
+    - Alpha: 0.9
+      Buffer Length: 1
+      Class: rviz_default_plugins/Path
+      Color: 0; 220; 255
+      Enabled: true
+      Head Color: 255; 255; 255
+      Line Style: Billboards
+      Line Width: 0.004
+      Name: Panda Commanded Path
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Radius: 0.03
+      Shaft Length: 0.1
+      Shaft Radius: 0.02
+      Topic:
+        Depth: 10
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /panda/commanded_path
+      Value: true
+    - Alpha: 0.9
+      Buffer Length: 1
+      Class: rviz_default_plugins/Path
+      Color: 255; 140; 0
+      Enabled: true
+      Head Color: 255; 255; 255
+      Line Style: Billboards
+      Line Width: 0.004
+      Name: KUKA Commanded Path
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Radius: 0.03
+      Shaft Length: 0.1
+      Shaft Radius: 0.02
+      Topic:
+        Depth: 10
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /iiwa7/commanded_path
       Value: true
   Enabled: true
   Global Options:

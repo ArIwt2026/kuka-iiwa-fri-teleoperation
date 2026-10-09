@@ -96,6 +96,7 @@
 /**/admittance_controller:
   ros__parameters:
     robot_name: lbr
+    admittance_damping_duration_s: 2.0
     admittance:
       mass: [0.01, 0.01, 0.01, 0.01, 0.01, 0.01]
       damping: [1.0, 1.0, 3.0, 1.0, 1.0, 1.0]

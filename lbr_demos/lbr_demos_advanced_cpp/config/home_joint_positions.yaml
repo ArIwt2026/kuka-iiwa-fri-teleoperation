@@ -6,4 +6,6 @@
       [-0.12611155664790577, 0.07655079450919308, 0.07899048315097312,
        -1.497705078441363, -0.028543163979933096, 1.570184412286569,
        0.7619175314218799]
-    return_max_joint_velocity_rad_s: 0.30
+    return_max_joint_velocity_rad_s: 2.0
+    return_max_joint_acceleration_rad_s2: 2.0
+

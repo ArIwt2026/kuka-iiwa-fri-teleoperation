@@ -10,6 +10,12 @@ def generate_launch_description():
         get_package_share_directory('lbr_bringup'), 'config', 'hardware.rviz')
     return LaunchDescription([
         Node(
+            package='lbr_bringup',
+            executable='commanded_pose_visualizer',
+            name='commanded_pose_visualizer',
+            output='screen',
+        ),
+        Node(
             package='rviz2', executable='rviz2', name='global_rviz',
             output='screen', arguments=['-d', config]),
     ])

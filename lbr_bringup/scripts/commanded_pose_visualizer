@@ -1,0 +1,504 @@
+#!/usr/bin/env python3
+"""
+Commanded Pose Visualizer Node (Approach A)
+
+Computes Forward Kinematics (FK) for Franka Panda and KUKA LBR iiwa 7 from their
+commanded joint topics, transforms the end-effector poses into the 'world' frame,
+and publishes:
+1. TF transforms:
+   - world -> panda_commanded_tcp
+   - world -> kuka_commanded_tcp
+   - world -> kuka_commanded_ee
+2. geometry_msgs/PoseStamped:
+   - /panda/commanded_pose_world
+   - /iiwa7/commanded_pose_world
+3. nav_msgs/Path:
+   - /panda/commanded_path
+   - /iiwa7/commanded_path
+4. visualization_msgs/MarkerArray:
+   - /visualization/commanded_poses
+     (Color-coded 3D target spheres, coordinate axes, text tags, and trailing history lines)
+"""
+
+import os
+import sys
+import collections
+import numpy as np
+
+import rclpy
+from rclpy.node import Node
+from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
+from sensor_msgs.msg import JointState
+from geometry_msgs.msg import PoseStamped, TransformStamped, Point
+from nav_msgs.msg import Path
+from visualization_msgs.msg import Marker, MarkerArray
+import tf2_ros
+
+import pinocchio as pin
+
+
+def quat_to_matrix(q):
+    """q is [x, y, z, w] -> 3x3 rotation matrix"""
+    x, y, z, w = q
+    return np.array([
+        [1.0 - 2.0*(y*y + z*z), 2.0*(x*y - z*w),       2.0*(x*z + y*w)],
+        [2.0*(x*y + z*w),       1.0 - 2.0*(x*x + z*z), 2.0*(y*z - x*w)],
+        [2.0*(x*z - y*w),       2.0*(y*z + x*w),       1.0 - 2.0*(x*x + y*y)]
+    ], dtype=np.float64)
+
+
+def make_se3(xyz, quat_xyzw):
+    R = quat_to_matrix(quat_xyzw)
+    p = np.array(xyz, dtype=np.float64)
+    return pin.SE3(R, p)
+
+
+# Fallback static calibrations from scripts/static_publishers.launch.py
+T_WORLD_TO_TRITON = make_se3(
+    [0.48742056, -0.02957435, 0.76378568],
+    [0.66195830, 0.60796170, -0.30698066, -0.31298028]
+)
+T_TRITON_TO_KUKA = make_se3(
+    [0.85142967, 0.10649739, 1.18792187],
+    [0.03935360, 0.87338426, -0.48511301, -0.01779319]
+)
+T_TRITON_TO_PANDA = make_se3(
+    [-0.28479401, -0.07484101, 1.57058245],
+    [0.63645226, 0.60578425, -0.33881138, 0.33639383]
+)
+
+DEFAULT_T_WORLD_TO_PANDA_BASE = T_WORLD_TO_TRITON.act(T_TRITON_TO_PANDA)
+DEFAULT_T_WORLD_TO_KUKA_BASE = T_WORLD_TO_TRITON.act(T_TRITON_TO_KUKA)
+
+
+class CommandedPoseVisualizer(Node):
+    def __init__(self):
+        super().__init__('commanded_pose_visualizer')
+
+        self.declare_parameter('world_frame', 'world')
+        self.declare_parameter('max_trail_points', 150)
+        self.declare_parameter('urdf_dir', '')
+
+        self.world_frame = self.get_parameter('world_frame').get_parameter_value().string_value
+        self.max_trail = self.get_parameter('max_trail_points').get_parameter_value().integer_value
+        custom_urdf_dir = self.get_parameter('urdf_dir').get_parameter_value().string_value
+
+        script_dir = os.path.dirname(os.path.realpath(__file__))
+        candidate_dirs = [d for d in [
+            custom_urdf_dir,
+            os.path.join(script_dir, 'urdf'),
+            os.path.join(script_dir, '..', 'urdf'),
+            '/home/iwtros/Documents/ar/scripts/urdf',
+            '/home/iwtros/Documents/ar/teleop_kuka_iiwa7/kuka-iiwa-fri-teleoperation/lbr_bringup/urdf',
+            '/tmp',
+        ] if d and os.path.isdir(d)]
+
+        panda_urdf_path = None
+        kuka_urdf_path = None
+        for d in candidate_dirs:
+            p = os.path.join(d, 'panda.urdf')
+            k = os.path.join(d, 'kuka.urdf')
+            if os.path.exists(p) and panda_urdf_path is None:
+                panda_urdf_path = p
+            if os.path.exists(k) and kuka_urdf_path is None:
+                kuka_urdf_path = k
+
+        if not panda_urdf_path or not kuka_urdf_path:
+            self.get_logger().error(f'URDF files not found in candidate dirs: {candidate_dirs}!')
+            raise FileNotFoundError(f'Missing URDF in {candidate_dirs}')
+
+        self.get_logger().info(f'Loading Panda URDF from: {panda_urdf_path}')
+        self.get_logger().info(f'Loading KUKA URDF from: {kuka_urdf_path}')
+
+        # Build Pinocchio Models
+        with open(panda_urdf_path, 'r') as f:
+            self.panda_model = pin.buildModelFromXML(f.read())
+        self.panda_data = self.panda_model.createData()
+
+        with open(kuka_urdf_path, 'r') as f:
+            self.kuka_model = pin.buildModelFromXML(f.read())
+        self.kuka_data = self.kuka_model.createData()
+
+        # Identify frame IDs
+        self.panda_tcp_frame = 'panda_hand_tcp' if self.panda_model.existFrame('panda_hand_tcp') else 'panda_link8'
+        self.panda_tcp_id = self.panda_model.getFrameId(self.panda_tcp_frame)
+
+        self.kuka_ee_frame = 'lbr_link_ee' if self.kuka_model.existFrame('lbr_link_ee') else 'lbr_link_7'
+        self.kuka_ee_id = self.kuka_model.getFrameId(self.kuka_ee_frame)
+
+        self.kuka_tcp_offset = np.array([0.0, 0.0, 0.0929], dtype=np.float64)  # WSG50 gripper grasp center offset
+
+        self.get_logger().info(f'Panda FK target frame: {self.panda_tcp_frame} (id {self.panda_tcp_id})')
+        self.get_logger().info(f'KUKA FK target frame: {self.kuka_ee_frame} (id {self.kuka_ee_id})')
+
+        # TF Buffer & Broadcaster
+        self.tf_buffer = tf2_ros.Buffer()
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
+        self.tf_broadcaster = tf2_ros.TransformBroadcaster(self)
+
+        # Publishers
+        self.pub_panda_pose = self.create_publisher(PoseStamped, '/panda/commanded_pose_world', 10)
+        self.pub_kuka_pose = self.create_publisher(PoseStamped, '/iiwa7/commanded_pose_world', 10)
+        self.pub_panda_path = self.create_publisher(Path, '/panda/commanded_path', 10)
+        self.pub_kuka_path = self.create_publisher(Path, '/iiwa7/commanded_path', 10)
+        self.pub_markers = self.create_publisher(MarkerArray, '/visualization/commanded_poses', 10)
+
+        # Trajectory deques
+        self.panda_history = collections.deque(maxlen=self.max_trail)
+        self.kuka_history = collections.deque(maxlen=self.max_trail)
+
+        # QoS for sensor commands: compatible with best-effort or reliable
+        sensor_qos = QoSProfile(
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=10,
+            durability=DurabilityPolicy.VOLATILE
+        )
+
+        # Subscriptions
+        self.sub_panda_cmd = self.create_subscription(
+            JointState,
+            '/panda/admittance_controller/joint_commands',
+            self.on_panda_command,
+            sensor_qos
+        )
+
+        self.sub_kuka_cmd = self.create_subscription(
+            JointState,
+            '/iiwa7/joint_commands',
+            self.on_kuka_command,
+            sensor_qos
+        )
+
+        # Periodic timer (20Hz) to publish markers and trails even if joint rates vary
+        self.latest_panda_pose = None
+        self.latest_kuka_pose = None
+        self.timer = self.create_timer(0.05, self.publish_visualization)
+
+        self.get_logger().info('CommandedPoseVisualizer initialized successfully.')
+
+    def lookup_world_to_base(self, base_frame, default_se3):
+        """Looks up world -> base_frame from TF buffer, falls back to default_se3."""
+        try:
+            tf_stamped = self.tf_buffer.lookup_transform(
+                self.world_frame,
+                base_frame,
+                rclpy.time.Time(),
+                timeout=rclpy.duration.Duration(seconds=0.01)
+            )
+            t = tf_stamped.transform.translation
+            r = tf_stamped.transform.rotation
+            q = [r.x, r.y, r.z, r.w]
+            return make_se3([t.x, t.y, t.z], q)
+        except Exception:
+            return default_se3
+
+    def on_panda_command(self, msg: JointState):
+        q = np.zeros(self.panda_model.nq)
+        # Assign joints
+        for name, pos in zip(msg.name, msg.position):
+            if name in self.panda_model.names:
+                jid = self.panda_model.getJointId(name)
+                q[self.panda_model.joints[jid].idx_q] = pos
+
+        # Compute FK
+        pin.forwardKinematics(self.panda_model, self.panda_data, q)
+        pin.updateFramePlacements(self.panda_model, self.panda_data)
+        M_base_tcp = self.panda_data.oMf[self.panda_tcp_id]
+
+        # Transform to world
+        M_world_base = self.lookup_world_to_base('panda_link0', DEFAULT_T_WORLD_TO_PANDA_BASE)
+        M_world_tcp = M_world_base.act(M_base_tcp)
+
+        now = self.get_clock().now()
+        pos = M_world_tcp.translation
+        quat = pin.Quaternion(M_world_tcp.rotation)
+
+        # Broadcast TF
+        t = TransformStamped()
+        t.header.stamp = now.to_msg()
+        t.header.frame_id = self.world_frame
+        t.child_frame_id = 'panda_commanded_tcp'
+        t.transform.translation.x = float(pos[0])
+        t.transform.translation.y = float(pos[1])
+        t.transform.translation.z = float(pos[2])
+        t.transform.rotation.x = float(quat.x)
+        t.transform.rotation.y = float(quat.y)
+        t.transform.rotation.z = float(quat.z)
+        t.transform.rotation.w = float(quat.w)
+        self.tf_broadcaster.sendTransform(t)
+
+        # PoseStamped
+        ps = PoseStamped()
+        ps.header.stamp = now.to_msg()
+        ps.header.frame_id = self.world_frame
+        ps.pose.position.x = float(pos[0])
+        ps.pose.position.y = float(pos[1])
+        ps.pose.position.z = float(pos[2])
+        ps.pose.orientation.x = float(quat.x)
+        ps.pose.orientation.y = float(quat.y)
+        ps.pose.orientation.z = float(quat.z)
+        ps.pose.orientation.w = float(quat.w)
+        self.pub_panda_pose.publish(ps)
+
+        self.latest_panda_pose = (pos, quat, M_world_tcp.rotation)
+        self.panda_history.append((pos[0], pos[1], pos[2]))
+
+        # Update and publish path
+        path = Path()
+        path.header.stamp = now.to_msg()
+        path.header.frame_id = self.world_frame
+        for pt in self.panda_history:
+            pt_ps = PoseStamped()
+            pt_ps.header = path.header
+            pt_ps.pose.position.x = pt[0]
+            pt_ps.pose.position.y = pt[1]
+            pt_ps.pose.position.z = pt[2]
+            path.poses.append(pt_ps)
+        self.pub_panda_path.publish(path)
+
+    def on_kuka_command(self, msg: JointState):
+        q = np.zeros(self.kuka_model.nq)
+        # Handle joint naming (iiwa7_A* or lbr_A*)
+        for name, pos in zip(msg.name, msg.position):
+            target = name
+            if target not in self.kuka_model.names:
+                if target.startswith('iiwa7_'):
+                    target = target.replace('iiwa7_', 'lbr_')
+                elif target.startswith('lbr_'):
+                    target = target.replace('lbr_', 'iiwa7_')
+            if target in self.kuka_model.names:
+                jid = self.kuka_model.getJointId(target)
+                q[self.kuka_model.joints[jid].idx_q] = pos
+
+        # Compute FK
+        pin.forwardKinematics(self.kuka_model, self.kuka_data, q)
+        pin.updateFramePlacements(self.kuka_model, self.kuka_data)
+        M_base_ee = self.kuka_data.oMf[self.kuka_ee_id]
+
+        # TCP offset along EE z-axis
+        M_ee_tcp = pin.SE3(np.eye(3), self.kuka_tcp_offset)
+        M_base_tcp = M_base_ee.act(M_ee_tcp)
+
+        # Transform to world
+        M_world_base = self.lookup_world_to_base('lbr_link_0', DEFAULT_T_WORLD_TO_KUKA_BASE)
+        M_world_ee = M_world_base.act(M_base_ee)
+        M_world_tcp = M_world_base.act(M_base_tcp)
+
+        now = self.get_clock().now()
+        pos_ee = M_world_ee.translation
+        quat_ee = pin.Quaternion(M_world_ee.rotation)
+
+        pos_tcp = M_world_tcp.translation
+        quat_tcp = pin.Quaternion(M_world_tcp.rotation)
+
+        # Broadcast TF: kuka_commanded_ee and kuka_commanded_tcp
+        t_ee = TransformStamped()
+        t_ee.header.stamp = now.to_msg()
+        t_ee.header.frame_id = self.world_frame
+        t_ee.child_frame_id = 'kuka_commanded_ee'
+        t_ee.transform.translation.x = float(pos_ee[0])
+        t_ee.transform.translation.y = float(pos_ee[1])
+        t_ee.transform.translation.z = float(pos_ee[2])
+        t_ee.transform.rotation.x = float(quat_ee.x)
+        t_ee.transform.rotation.y = float(quat_ee.y)
+        t_ee.transform.rotation.z = float(quat_ee.z)
+        t_ee.transform.rotation.w = float(quat_ee.w)
+        self.tf_broadcaster.sendTransform(t_ee)
+
+        t_tcp = TransformStamped()
+        t_tcp.header.stamp = now.to_msg()
+        t_tcp.header.frame_id = self.world_frame
+        t_tcp.child_frame_id = 'kuka_commanded_tcp'
+        t_tcp.transform.translation.x = float(pos_tcp[0])
+        t_tcp.transform.translation.y = float(pos_tcp[1])
+        t_tcp.transform.translation.z = float(pos_tcp[2])
+        t_tcp.transform.rotation.x = float(quat_tcp.x)
+        t_tcp.transform.rotation.y = float(quat_tcp.y)
+        t_tcp.transform.rotation.z = float(quat_tcp.z)
+        t_tcp.transform.rotation.w = float(quat_tcp.w)
+        self.tf_broadcaster.sendTransform(t_tcp)
+
+        # PoseStamped (published at TCP)
+        ps = PoseStamped()
+        ps.header.stamp = now.to_msg()
+        ps.header.frame_id = self.world_frame
+        ps.pose.position.x = float(pos_tcp[0])
+        ps.pose.position.y = float(pos_tcp[1])
+        ps.pose.position.z = float(pos_tcp[2])
+        ps.pose.orientation.x = float(quat_tcp.x)
+        ps.pose.orientation.y = float(quat_tcp.y)
+        ps.pose.orientation.z = float(quat_tcp.z)
+        ps.pose.orientation.w = float(quat_tcp.w)
+        self.pub_kuka_pose.publish(ps)
+
+        self.latest_kuka_pose = (pos_tcp, quat_tcp, M_world_tcp.rotation)
+        self.kuka_history.append((pos_tcp[0], pos_tcp[1], pos_tcp[2]))
+
+        # Update and publish path
+        path = Path()
+        path.header.stamp = now.to_msg()
+        path.header.frame_id = self.world_frame
+        for pt in self.kuka_history:
+            pt_ps = PoseStamped()
+            pt_ps.header = path.header
+            pt_ps.pose.position.x = pt[0]
+            pt_ps.pose.position.y = pt[1]
+            pt_ps.pose.position.z = pt[2]
+            path.poses.append(pt_ps)
+        self.pub_kuka_path.publish(path)
+
+    def publish_visualization(self):
+        """Publishes MarkerArray showing target spheres, labels, coordinate triads, and trails."""
+        markers = MarkerArray()
+        stamp = self.get_clock().now().to_msg()
+
+        # Panda Markers (Cyan: rgba 0.0, 0.85, 1.0, 0.85)
+        if self.latest_panda_pose is not None:
+            pos, quat, rot = self.latest_panda_pose
+
+            # 1. Target Sphere
+            m_sphere = Marker()
+            m_sphere.header.stamp = stamp
+            m_sphere.header.frame_id = self.world_frame
+            m_sphere.ns = "panda_cmd"
+            m_sphere.id = 0
+            m_sphere.type = Marker.SPHERE
+            m_sphere.action = Marker.ADD
+            m_sphere.pose.position.x = float(pos[0])
+            m_sphere.pose.position.y = float(pos[1])
+            m_sphere.pose.position.z = float(pos[2])
+            m_sphere.pose.orientation.w = 1.0
+            m_sphere.scale.x = 0.045
+            m_sphere.scale.y = 0.045
+            m_sphere.scale.z = 0.045
+            m_sphere.color.r = 0.0
+            m_sphere.color.g = 0.85
+            m_sphere.color.b = 1.0
+            m_sphere.color.a = 0.85
+            markers.markers.append(m_sphere)
+
+            # 2. Text Label
+            m_text = Marker()
+            m_text.header.stamp = stamp
+            m_text.header.frame_id = self.world_frame
+            m_text.ns = "panda_cmd"
+            m_text.id = 1
+            m_text.type = Marker.TEXT_VIEW_FACING
+            m_text.action = Marker.ADD
+            m_text.pose.position.x = float(pos[0])
+            m_text.pose.position.y = float(pos[1])
+            m_text.pose.position.z = float(pos[2] + 0.06)
+            m_text.pose.orientation.w = 1.0
+            m_text.scale.z = 0.035
+            m_text.color.r = 0.8
+            m_text.color.g = 1.0
+            m_text.color.b = 1.0
+            m_text.color.a = 0.95
+            m_text.text = "Panda Cmd TCP"
+            markers.markers.append(m_text)
+
+            # 3. Trajectory Trail
+            if len(self.panda_history) > 1:
+                m_trail = Marker()
+                m_trail.header.stamp = stamp
+                m_trail.header.frame_id = self.world_frame
+                m_trail.ns = "panda_cmd"
+                m_trail.id = 2
+                m_trail.type = Marker.LINE_STRIP
+                m_trail.action = Marker.ADD
+                m_trail.scale.x = 0.005
+                m_trail.color.r = 0.0
+                m_trail.color.g = 0.9
+                m_trail.color.b = 1.0
+                m_trail.color.a = 0.7
+                for pt in self.panda_history:
+                    p = Point()
+                    p.x, p.y, p.z = pt[0], pt[1], pt[2]
+                    m_trail.points.append(p)
+                markers.markers.append(m_trail)
+
+        # KUKA Markers (Orange: rgba 1.0, 0.55, 0.0, 0.85)
+        if self.latest_kuka_pose is not None:
+            pos, quat, rot = self.latest_kuka_pose
+
+            # 1. Target Sphere
+            m_sphere = Marker()
+            m_sphere.header.stamp = stamp
+            m_sphere.header.frame_id = self.world_frame
+            m_sphere.ns = "kuka_cmd"
+            m_sphere.id = 10
+            m_sphere.type = Marker.SPHERE
+            m_sphere.action = Marker.ADD
+            m_sphere.pose.position.x = float(pos[0])
+            m_sphere.pose.position.y = float(pos[1])
+            m_sphere.pose.position.z = float(pos[2])
+            m_sphere.pose.orientation.w = 1.0
+            m_sphere.scale.x = 0.045
+            m_sphere.scale.y = 0.045
+            m_sphere.scale.z = 0.045
+            m_sphere.color.r = 1.0
+            m_sphere.color.g = 0.55
+            m_sphere.color.b = 0.0
+            m_sphere.color.a = 0.85
+            markers.markers.append(m_sphere)
+
+            # 2. Text Label
+            m_text = Marker()
+            m_text.header.stamp = stamp
+            m_text.header.frame_id = self.world_frame
+            m_text.ns = "kuka_cmd"
+            m_text.id = 11
+            m_text.type = Marker.TEXT_VIEW_FACING
+            m_text.action = Marker.ADD
+            m_text.pose.position.x = float(pos[0])
+            m_text.pose.position.y = float(pos[1])
+            m_text.pose.position.z = float(pos[2] + 0.06)
+            m_text.pose.orientation.w = 1.0
+            m_text.scale.z = 0.035
+            m_text.color.r = 1.0
+            m_text.color.g = 0.85
+            m_text.color.b = 0.6
+            m_text.color.a = 0.95
+            m_text.text = "KUKA Cmd TCP"
+            markers.markers.append(m_text)
+
+            # 3. Trajectory Trail
+            if len(self.kuka_history) > 1:
+                m_trail = Marker()
+                m_trail.header.stamp = stamp
+                m_trail.header.frame_id = self.world_frame
+                m_trail.ns = "kuka_cmd"
+                m_trail.id = 12
+                m_trail.type = Marker.LINE_STRIP
+                m_trail.action = Marker.ADD
+                m_trail.scale.x = 0.005
+                m_trail.color.r = 1.0
+                m_trail.color.g = 0.55
+                m_trail.color.b = 0.0
+                m_trail.color.a = 0.7
+                for pt in self.kuka_history:
+                    p = Point()
+                    p.x, p.y, p.z = pt[0], pt[1], pt[2]
+                    m_trail.points.append(p)
+                markers.markers.append(m_trail)
+
+        if len(markers.markers) > 0:
+            self.pub_markers.publish(markers)
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = CommandedPoseVisualizer()
+    try:
+        rclpy.spin(node)
+    except (KeyboardInterrupt, rclpy.executors.ExternalShutdownException, Exception):
+        pass
+    finally:
+        node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()

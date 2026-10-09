@@ -90,7 +90,13 @@ controller_interface::CallbackReturn AdmittanceController::on_init() {
       this->get_node()->declare_parameter("home_joint_positions_rad", std::vector<double>{});
     }
     if (!this->get_node()->has_parameter("return_max_joint_velocity_rad_s")) {
-      this->get_node()->declare_parameter("return_max_joint_velocity_rad_s", 0.15);
+      this->get_node()->declare_parameter("return_max_joint_velocity_rad_s", 2.0);
+    }
+    if (!this->get_node()->has_parameter("return_max_joint_acceleration_rad_s2")) {
+      this->get_node()->declare_parameter("return_max_joint_acceleration_rad_s2", 2.0);
+    }
+    if (!this->get_node()->has_parameter("admittance_damping_duration_s")) {
+      this->get_node()->declare_parameter("admittance_damping_duration_s", 2.0);
     }
     robot_description_ = this->get_node()->get_parameter("robot_description").as_string();
     if (robot_description_.empty()) {
@@ -118,6 +124,16 @@ controller_interface::CallbackReturn AdmittanceController::on_init() {
         this->get_node()->get_parameter("return_max_joint_velocity_rad_s").as_double();
     if (!std::isfinite(return_max_joint_velocity_) || return_max_joint_velocity_ <= 0.0) {
       throw std::runtime_error("return_max_joint_velocity_rad_s must be positive and finite");
+    }
+    return_max_joint_acceleration_ =
+        this->get_node()->get_parameter("return_max_joint_acceleration_rad_s2").as_double();
+    if (!std::isfinite(return_max_joint_acceleration_) || return_max_joint_acceleration_ <= 0.0) {
+      throw std::runtime_error("return_max_joint_acceleration_rad_s2 must be positive and finite");
+    }
+    admittance_damping_duration_ =
+        this->get_node()->get_parameter("admittance_damping_duration_s").as_double();
+    if (!std::isfinite(admittance_damping_duration_) || admittance_damping_duration_ < 0.0) {
+      throw std::runtime_error("admittance_damping_duration_s must be non-negative and finite");
     }
     teach_mode_service_ = this->get_node()->create_service<std_srvs::srv::Trigger>(
         "~/teach_mode/toggle",
@@ -168,8 +184,9 @@ controller_interface::return_type AdmittanceController::update(const rclcpp::Tim
       active_teach_mode_ = TeachMode::HOME_HOLD;
       requested_teach_mode_.store(TeachMode::HOME_HOLD, std::memory_order_release);
     } else {
-      // A quintic profile has a peak normalized velocity of 1.875.
-      return_duration_ = std::max(2.0, 1.875 * max_delta / return_max_joint_velocity_);
+      const double t_vel = 1.875 * max_delta / return_max_joint_velocity_;
+      const double t_acc = std::sqrt(5.77350269 * max_delta / return_max_joint_acceleration_);
+      return_duration_ = std::max({0.5, t_vel, t_acc});
       return_elapsed_ = 0.0;
       active_teach_mode_ = TeachMode::RETURN_HOME;
       requested_teach_mode_.store(TeachMode::RETURN_HOME, std::memory_order_release);
@@ -189,13 +206,15 @@ controller_interface::return_type AdmittanceController::update(const rclcpp::Tim
         return_start_positions_[i] = q_[i];
         max_delta = std::max(max_delta, std::abs(home_joint_positions_[i] - q_[i]));
       }
-      // A quintic profile has a peak normalized velocity of 1.875.
-      return_duration_ = std::max(2.0, 1.875 * max_delta / return_max_joint_velocity_);
+      const double t_vel = 1.875 * max_delta / return_max_joint_velocity_;
+      const double t_acc = std::sqrt(5.77350269 * max_delta / return_max_joint_acceleration_);
+      return_duration_ = std::max({0.5, t_vel, t_acc});
       return_elapsed_ = 0.0;
     }
     if (requested_mode == TeachMode::ADMITTANCE) {
       initialized_ = false;
       zero_all_values_();
+      admittance_elapsed_ = 0.0;
     }
     active_teach_mode_ = requested_mode;
   }
@@ -252,6 +271,14 @@ controller_interface::return_type AdmittanceController::update(const rclcpp::Tim
   f_ext_.head(3) = Eigen::Matrix3d::Map(chain_tip_frame.M.data).transpose() * f_ext_.head(3);
   f_ext_.tail(3) = Eigen::Matrix3d::Map(chain_tip_frame.M.data).transpose() * f_ext_.tail(3);
 
+  // Smoothly damp/suppress external wrench measurements over the initial transition window
+  admittance_elapsed_ += std::max(0.0, period.seconds());
+  if (admittance_damping_duration_ > 0.0 && admittance_elapsed_ < admittance_damping_duration_) {
+    const double u = std::clamp(admittance_elapsed_ / admittance_damping_duration_, 0.0, 1.0);
+    const double beta = 1.0 - (10.0 * u * u * u - 15.0 * u * u * u * u + 6.0 * u * u * u * u * u);
+    f_ext_ *= (1.0 - beta);
+  }
+
   // compute admittance
   admittance_impl_ptr_->compute(f_ext_, delta_x_, dx_, ddx_);
 
@@ -287,8 +314,9 @@ void AdmittanceController::publish_joint_commands_(const rclcpp::Time &time,
   if (!realtime_joint_command_publisher_->trylock()) return;
   auto &message = realtime_joint_command_publisher_->msg_;
   message.header.stamp = time;
+  const bool homing = (active_teach_mode_ == TeachMode::RETURN_HOME || active_teach_mode_ == TeachMode::HOME_HOLD);
   for (std::size_t i = 0; i < lbr_fri_ros2::N_JNTS; ++i) {
-    message.position[i] = command_interfaces_[i].get_value();
+    message.position[i] = homing ? home_joint_positions_[i] : command_interfaces_[i].get_value();
   }
   realtime_joint_command_publisher_->unlockAndPublish();
 }
@@ -315,6 +343,7 @@ AdmittanceController::on_activate(const rclcpp_lifecycle::State & /*previous_sta
   session_active_prev_ = false;
   active_teach_mode_ = TeachMode::RETURN_HOME;
   command_publish_elapsed_ = 0.0;
+  admittance_elapsed_ = 0.0;
   requested_teach_mode_.store(TeachMode::RETURN_HOME, std::memory_order_release);
   return controller_interface::CallbackReturn::SUCCESS;
 }
@@ -324,6 +353,7 @@ AdmittanceController::on_deactivate(const rclcpp_lifecycle::State & /*previous_s
   clear_state_interfaces_();
   initialized_ = false;
   session_active_prev_ = false;
+  admittance_elapsed_ = 0.0;
   return controller_interface::CallbackReturn::SUCCESS;
 }
 
